@@ -1,24 +1,41 @@
 # excel-to-aasx
 
-Auditable Excel-to-AASX generation pipeline.
+Standalone Excel-to-AASX generation package.
 
-Planned scope:
+This repository converts configured supplier Excel workbooks into auditable AAS
+JSON and AASX packages. It is intentionally separate from any BaSyx
+server/runtime repository.
+
+## Pipeline
 
 ```text
 Excel workbook
-  -> complete neutral JSON extraction
-  -> official template matching
-  -> template-shaped AAS JSON
-  -> validation
+  -> neutral extraction JSON
+  -> official-template-shaped AAS JSON
+  -> validation reports
   -> AASX package
 ```
 
-This project should stay independent from any BaSyx server/runtime deployment.
-Server repositories can consume the generated `.aasx` files or call this tool
-from CI.
+## Common Commands
+
+```bash
+git submodule update --init --recursive
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -e .[dev]
+make generate COMPANY=schunk
+```
 
 ## Documentation
 
-- `docs/architecture.md`
-- `docs/quickstart.md`
-- `docs/limitations.md`
+```text
+docs/README.md
+docs/architecture.md
+docs/quickstart.md
+docs/limitations.md
+docs/third-party.md
+```
+
+The key rule is simple: use official templates and maintained AAS tooling for
+standard behavior, and keep only project-specific extraction, mapping, and
+evidence code in this package.

@@ -1,36 +1,114 @@
 # Architecture
 
-`excel-to-aasx` is a standalone generation tool. It is not a BaSyx server and
-does not require Keycloak, MongoDB, or the BaSyx UI to create AASX packages.
+`excel-to-aasx` converts semi-structured supplier Excel workbooks into
+auditable AAS JSON and AASX packages. It is a generator package, not a BaSyx
+runtime, registry, database, or web UI.
+
+## Scope
+
+```text
+in scope
+  read Excel workbooks
+  preserve neutral extraction evidence
+  map rows into configured IDTA templates
+  validate generated AAS JSON
+  package validated data as AASX
+  write mapping, validation, and packaging reports
+
+out of scope
+  run BaSyx services
+  deploy to repositories
+  manage users, security, or cloud infrastructure
+  guarantee semantic truth without review
+```
 
 ## Pipeline
 
-```text
-Excel workbook
-  -> Step 1 neutral extraction JSON
-  -> Step 2 AAS JSON shaped by official IDTA templates
-  -> Step 3 validation
-  -> Step 4 AASX package
+```mermaid
+flowchart TD
+    A[Company Excel workbooks] --> B[Step 1: Neutral extraction]
+    B --> C[Step 1 JSON with cells, rows, comments, hyperlinks, merged ranges]
+    C --> D[Step 2: Template-guided transform]
+    E[Company config] --> D
+    F[IDTA submodel templates] --> D
+    D --> G[Template-shaped AAS environment JSON]
+    D --> H[Mapping report]
+    G --> I[Step 3: Validation]
+    J[aas-core schema and Python SDK] --> I
+    F --> I
+    I --> K[Validation report]
+    K --> L{Errors?}
+    L -- yes --> M[Stop and review]
+    L -- no --> N[Step 4: AASX packaging]
+    G --> N
+    N --> O[AASX package]
+    N --> P[Packaging summary]
 ```
 
-## Design Rules
+## Stage Responsibilities
 
-- Keep server/runtime deployment outside this repository.
-- Keep generated data under ignored `data/` folders.
-- Use official templates and SDKs through third-party repositories.
-- Generate evidence reports at every non-trivial step.
-- Do not silently claim semantic correctness when the source spreadsheet is
-  ambiguous.
+| Stage | Output | Responsibility |
+| --- | --- | --- |
+| Step 1 extraction | `xlsx-json-step1/` | Capture workbook content as reviewable neutral JSON |
+| Step 2 transform | `xlsx-json-step2/` | Deep-copy official templates and fill values from extracted rows |
+| Step 3 validation | `xlsx-json-step3/` | Check AAS schema, SDK verification, template shape, project rules |
+| Step 4 package | `xlsx-json-step4/` | Write BaSyx-compatible JSON and AASX package, then roundtrip-read it |
 
-## Third-Party Inputs
+## Data Boundary
 
-The project expects these reference repositories under `third_party/`:
-
-```text
-third_party/admin-shell-io/submodel-templates
-third_party/aas-core-works/aas-core-codegen
-third_party/aas-core-works/aas-core3.0-python
+```mermaid
+flowchart LR
+    X[Excel source] --> S1[Neutral JSON]
+    S1 --> S2[AAS JSON]
+    S2 --> S3[Validation report]
+    S2 --> S4[AASX]
+    S4 --> R[Runtime repo consumes output]
 ```
 
-They should remain unmodified. Project-specific behavior belongs in local
-configuration and pipeline code.
+The runtime repository consumes generated outputs. It does not own conversion
+logic.
+
+## Configuration Boundary
+
+Company-specific input is declared in:
+
+```text
+configs/companies/<company>.json
+```
+
+The config selects:
+
+- input workbook directory;
+- expected workbook names;
+- output root;
+- AAS, asset, and submodel identifier prefixes;
+- worksheet-to-template mappings.
+
+The config does not modify upstream templates. It tells the pipeline which
+official template each worksheet should instantiate.
+
+## Evidence Model
+
+The generator must never silently drop uncertainty. Review evidence is written
+at each stage:
+
+```text
+xlsx-json-step1/
+  complete workbook extraction
+
+xlsx-json-step2/
+  environment.json
+  mapping-report.json
+
+xlsx-json-step3/
+  validation-report.json
+
+xlsx-json-step4/
+  environment.json
+  *.aasx
+  summary.json
+```
+
+Mapping and validation reports are part of the engineering output. They are how
+a reviewer checks which rows were matched, skipped, expanded, or converted into
+dummy values.

@@ -1,41 +1,73 @@
 # Limitations
 
-This project can make Excel-to-AASX generation reproducible and auditable. It
-cannot guarantee perfect semantic conversion for arbitrary spreadsheets.
+This project makes Excel-to-AASX generation reproducible and reviewable. It
+does not make arbitrary spreadsheets semantically correct AAS instances.
 
-## What Works Best
+## Strong Guarantees
 
-- Workbooks following AAS/DPP-style sheet structure.
-- Rows with stable `idShort` values.
-- Rows with semantic IDs.
-- Sheets that correspond to official IDTA submodel templates.
-- Human-reviewed mapping reports.
+The pipeline can guarantee:
 
-## Known Limitations
+- workbook content is extracted into stable JSON evidence;
+- configured official templates are used as the structural source;
+- generated AAS JSON is checked by schema and SDK validation;
+- project rules reject known bad outputs such as parser metadata leakage;
+- AASX packages are roundtrip-read before success is reported;
+- mapping, validation, dummy-value, and packaging decisions are logged.
 
-- Arbitrary Excel layouts cannot be converted with full confidence.
-- Merged cells, formatting, comments, and hyperlinks can be extracted, but their
-  semantic meaning still needs interpretation.
-- Missing mandatory AAS values may require dummy placeholders or manual input.
-- Local image/PDF filenames are not real file content unless the source files
-  are available.
-- Template selection is currently configuration-driven. Automatic high-confidence
-  template detection should be added as a separate future stage.
-- Validation proves structural correctness, not business truth.
-- AASX packaging can include placeholder supplementary files, but placeholders
-  are evidence of missing source data, not real product documentation.
+## Weak Guarantees
 
-## Industry Scope
+The pipeline cannot fully guarantee:
 
-The realistic claim is:
+- every Excel row belongs to the chosen submodel;
+- every visual section heading was interpreted correctly;
+- every unit, value, file, image, and lifecycle field is business-correct;
+- copied template rows in Excel represent real product data;
+- a missing value should be empty, dummy-generated, or manually supplied;
+- a UI visualization tab will render every valid AAS element.
 
-```text
-Auditable generation of AASX packages from semi-structured AAS/DPP Excel
-workbooks using official templates and validation reports.
+## Why Full Automation Is Limited
+
+Excel contains layout and presentation signals, not a formal AAS mapping. A
+merged cell, color, blank row, or nearby heading can be meaningful to a human
+while still being ambiguous to software.
+
+```mermaid
+flowchart TD
+    A[Excel cell value] --> B{Has clear idShort and semantic ID?}
+    B -- yes --> C[Can map with high confidence]
+    B -- no --> D{Can template path or section context disambiguate?}
+    D -- yes --> E[Map with evidence and confidence]
+    D -- no --> F[Flag for manual review]
 ```
 
-The unrealistic claim is:
+## Dummy Values
+
+Mandatory AAS fields sometimes have no Excel value. The pipeline may generate a
+dummy value so the element remains visible and structurally valid.
+
+Dummy values are marked with:
 
 ```text
-Any Excel file can be converted automatically into a perfect AASX file.
+SourceValueStatus = DummyGenerated
 ```
+
+This is not real product data. It is a review signal.
+
+## Supplementary Files
+
+If Excel references a local image or PDF but the real file is not available,
+the package step may add a placeholder supplementary file. This keeps AASX
+packaging technically valid, but the placeholder is not a substitute for the
+real document.
+
+## Production Requirement
+
+For production use, treat the generated reports as mandatory review artifacts.
+High-confidence automation is acceptable only when:
+
+- input workbook formats are controlled;
+- template versions are pinned;
+- mapping reports are reviewed;
+- validation is clean;
+- unresolved or low-confidence rows block release;
+- accepted mappings become versioned configuration or tests.
