@@ -11,7 +11,7 @@ flowchart LR
     A[Local pipeline code] --> B[openpyxl]
     A --> C[IDTA/Admin Shell templates]
     A --> D[aas-core validation]
-    A --> E[BaSyx Python SDK]
+    A --> E[AASX package library]
     B --> F[Read XLSX structure]
     C --> G[Provide official submodel shapes]
     D --> H[Verify AAS metamodel rules]
@@ -23,7 +23,7 @@ reader, IDTA template copies, AAS metamodel validator, and AASX packager. That
 would increase review burden and risk divergence from maintained community
 tools.
 
-## Runtime Python Dependencies
+## Python Dependencies
 
 | Dependency | Role |
 | --- | --- |

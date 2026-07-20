@@ -1,26 +1,7 @@
 # Architecture
 
 `excel-to-aasx` converts semi-structured supplier Excel workbooks into
-auditable AAS JSON and AASX packages. It is a generator package, not a BaSyx
-runtime, registry, database, or web UI.
-
-## Scope
-
-```text
-in scope
-  read Excel workbooks
-  preserve neutral extraction evidence
-  map rows into configured IDTA templates
-  validate generated AAS JSON
-  package validated data as AASX
-  write mapping, validation, and packaging reports
-
-out of scope
-  run BaSyx services
-  deploy to repositories
-  manage users, security, or cloud infrastructure
-  guarantee semantic truth without review
-```
+auditable AAS JSON and AASX packages.
 
 ## Pipeline
 
@@ -52,9 +33,9 @@ flowchart TD
 | Step 1 extraction | `xlsx-json-step1/` | Capture workbook content as reviewable neutral JSON |
 | Step 2 transform | `xlsx-json-step2/` | Deep-copy official templates and fill values from extracted rows |
 | Step 3 validation | `xlsx-json-step3/` | Check AAS schema, SDK verification, template shape, project rules |
-| Step 4 package | `xlsx-json-step4/` | Write BaSyx-compatible JSON and AASX package, then roundtrip-read it |
+| Step 4 package | `xlsx-json-step4/` | Write package-ready JSON and AASX, then roundtrip-read it |
 
-## Data Boundary
+## Artifact Flow
 
 ```mermaid
 flowchart LR
@@ -62,11 +43,8 @@ flowchart LR
     S1 --> S2[AAS JSON]
     S2 --> S3[Validation report]
     S2 --> S4[AASX]
-    S4 --> R[Runtime repo consumes output]
+    S4 --> R[Consumer systems]
 ```
-
-The runtime repository consumes generated outputs. It does not own conversion
-logic.
 
 ## Configuration Boundary
 

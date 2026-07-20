@@ -9,21 +9,12 @@ This folder documents the standalone Excel-to-AASX generator.
 3. `third-party.md`
 4. `limitations.md`
 
-## Scope Boundary
+## Scope
 
 ```text
-excel-to-aasx
-  owns Excel extraction
-  owns template mapping
-  owns generated AAS JSON validation
-  owns AASX packaging
-  owns conversion reports and limitations
-
-runtime repository
-  owns BaSyx services
-  owns deployment/readback
-  owns registries, discovery, security, and cloud runtime work
+Excel extraction
+Template mapping
+Generated AAS JSON validation
+AASX packaging
+Conversion reports and limitations
 ```
-
-Do not add BaSyx server, MongoDB, Keycloak, or cloud deployment logic to this
-package. Those responsibilities belong to a runtime repository.

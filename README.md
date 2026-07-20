@@ -3,8 +3,7 @@
 Standalone Excel-to-AASX generation package.
 
 This repository converts configured supplier Excel workbooks into auditable AAS
-JSON and AASX packages. It is intentionally separate from any BaSyx
-server/runtime repository.
+JSON and AASX packages.
 
 ## Pipeline
 
