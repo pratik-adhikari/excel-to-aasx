@@ -1,21 +1,51 @@
 # excel-to-aasx
 
-Standalone Excel-to-AASX generation package.
+Excel-to-AASX generator for supplier workbook data.
 
-This repository converts configured supplier Excel workbooks into auditable AAS
-JSON and AASX packages.
+The package reads configured `.xlsx` workbooks, preserves a neutral extraction
+record, maps workbook rows into selected IDTA/Admin Shell submodel templates,
+validates the generated AAS JSON, and writes AASX packages with review reports.
 
 ## Pipeline
 
-```text
-Excel workbook
-  -> neutral extraction JSON
-  -> official-template-shaped AAS JSON
-  -> validation reports
-  -> AASX package
+```mermaid
+flowchart LR
+    Excel[Excel workbooks] --> Extract[Step 1 extraction JSON]
+    Extract --> Transform[Step 2 AAS JSON]
+    Templates[IDTA templates] --> Transform
+    Transform --> Validate[Step 3 validation reports]
+    Validate --> Package[Step 4 AASX packages]
 ```
 
-## Common Commands
+## Inputs
+
+```text
+configs/companies/<company>.json
+data/input/<company>/*.xlsx
+third_party/admin-shell-io/submodel-templates
+third_party/aas-core-works/aas-core-codegen
+third_party/aas-core-works/aas-core3.0-python
+```
+
+## Outputs
+
+```text
+data/generated/<company>/xlsx-json-step1/
+data/generated/<company>/xlsx-json-step2/
+data/generated/<company>/xlsx-json-step3/
+data/generated/<company>/xlsx-json-step4/
+```
+
+Important review files:
+
+```text
+mapping-report.json
+validation-report.json
+summary.json
+*.aasx
+```
+
+## Quick Start
 
 ```bash
 git submodule update --init --recursive
@@ -25,16 +55,22 @@ pip install -e .[dev]
 make generate COMPANY=schunk
 ```
 
+Run tests:
+
+```bash
+python -m pytest tests
+```
+
 ## Documentation
 
 ```text
 docs/README.md
 docs/architecture.md
 docs/quickstart.md
-docs/limitations.md
 docs/third-party.md
+docs/limitations.md
 ```
 
-The key rule is simple: use official templates and maintained AAS tooling for
-standard behavior, and keep only project-specific extraction, mapping, and
-evidence code in this package.
+Start with `docs/architecture.md` for the data flow and
+`docs/limitations.md` before treating generated output as reviewed product
+data.
