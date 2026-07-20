@@ -21,6 +21,7 @@ flowchart LR
 
 ```text
 configs/companies/<company>.json
+configs/formats/<format>.json
 data/input/<company>/*.xlsx
 third_party/admin-shell-io/submodel-templates
 third_party/aas-core-works/aas-core-codegen

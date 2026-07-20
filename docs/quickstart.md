@@ -22,10 +22,35 @@ For the default Schunk configuration, put the workbooks in:
 data/input/schunk/
 ```
 
-Expected file names and worksheet mappings are defined in:
+Expected file names are defined in:
 
 ```text
 configs/companies/schunk.json
+```
+
+Reusable worksheet mappings are inherited from:
+
+```text
+configs/formats/idta-schunk-workbook.json
+```
+
+For one exact workbook, copy the company config and reduce only the `workbooks`
+list:
+
+```bash
+cp configs/companies/schunk.json configs/companies/schunk-single.json
+```
+
+Then edit:
+
+```json
+{
+  "extends": "../formats/idta-schunk-workbook.json",
+  "company": "schunk-single",
+  "inputDir": "data/input/schunk",
+  "outputRoot": "data/generated/schunk-single",
+  "workbooks": ["EGP 40-N-N-B.xlsx"]
+}
 ```
 
 ## Run The Full Pipeline

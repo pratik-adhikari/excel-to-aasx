@@ -46,24 +46,45 @@ flowchart LR
     S4 --> R[Consumer systems]
 ```
 
-## Configuration Boundary
+## Configuration Model
 
-Company-specific input is declared in:
+Configuration is split into two layers:
 
 ```text
+configs/formats/<format>.json
+  reusable workbook layout and sheet-to-template mapping
+
 configs/companies/<company>.json
+  exact input directory, workbook list, output root, and asset identifiers
 ```
 
-The config selects:
+Company configs use `extends` to inherit the repeated format mapping:
+
+```json
+{
+  "extends": "../formats/idta-schunk-workbook.json",
+  "company": "schunk",
+  "inputDir": "data/input/schunk",
+  "outputRoot": "data/generated/schunk",
+  "workbooks": ["EGP 40-N-N-B.xlsx"]
+}
+```
+
+Format configs select:
+
+- worksheet names;
+- target `submodelIdShort` values;
+- official IDTA/Admin Shell template files.
+
+Company configs select:
 
 - input workbook directory;
 - expected workbook names;
 - output root;
-- AAS, asset, and submodel identifier prefixes;
-- worksheet-to-template mappings.
+- AAS, asset, and submodel identifier prefixes.
 
-The config does not modify upstream templates. It tells the pipeline which
-official template each worksheet should instantiate.
+This keeps per-product configs small while still allowing the workbook format
+to change independently when the Excel layout changes.
 
 ## Evidence Model
 
