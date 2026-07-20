@@ -13,6 +13,7 @@ from typing import Any
 from urllib.parse import quote, urlsplit, urlunsplit
 
 from excel_to_aasx.company_config import DEFAULT_COMPANY_CONFIG, load_company_config, sheet_templates
+from excel_to_aasx.logging import classified, generated, warning
 
 PLACEHOLDER_VALUES = {"", "#", "-", "n/a", "N/A", "not specified", "Not specified"}
 GENERIC_ARBITRARY_SEMANTIC = "https://admin-shell.io/SMT/General/Arbitrary"
@@ -161,7 +162,7 @@ def load_json(path: Path) -> dict[str, Any]:
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    print(f"generated {path}")
+    generated(path)
 
 
 def load_rows(sheet_json: dict[str, Any]) -> list[InputRow]:
@@ -794,7 +795,7 @@ def add_mandatory_dummy_values(element: dict[str, Any], path: str = "") -> list[
         "reason": "Mandatory template element had no Excel value; dummy value generated.",
     }
     records.append(record)
-    print(
+    warning(
         "DUMMY generated: "
         f"path={record['path']} idShort={record['idShort']} "
         f"modelType={record['modelType']} valueType={record['valueType']} "
@@ -1137,13 +1138,17 @@ def build_workbook(
             classification_counts[record["classification"]] = (
                 classification_counts.get(record["classification"], 0) + 1
             )
-        print(
+        message = (
             "classified "
             f"{workbook_dir.name}/{sheet_name}: "
             + ", ".join(
                 f"{name}={count}" for name, count in sorted(classification_counts.items())
             )
         )
+        if classification_counts.get("unmapped_excel_row", 0):
+            warning(message)
+        else:
+            classified(message)
 
         submodel_report = {
             "sheet": sheet_name,

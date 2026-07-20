@@ -106,6 +106,10 @@ xlsx-json-step4/
   environment.json
   *.aasx
   summary.json
+
+logs/
+  timestamped stage logs
+  latest log per stage
 ```
 
 Mapping and validation reports are part of the engineering output. They are how

@@ -1,6 +1,9 @@
 # Quickstart
 
-## Install
+## One-Time Environment Setup
+
+Run this from the `excel-to-aasx` repository root only when `.venv` does not
+exist or dependencies need to be refreshed:
 
 ```bash
 python3 -m venv .venv
@@ -13,6 +16,9 @@ Initialize reference submodules:
 ```bash
 git submodule update --init --recursive
 ```
+
+This setup does not extract Excel data and does not generate AASX output. It
+only prepares the local Python environment.
 
 ## Prepare Input
 
@@ -53,6 +59,15 @@ Then edit:
 }
 ```
 
+## Run Individual Stages
+
+```bash
+make extract COMPANY=schunk
+make transform COMPANY=schunk
+make validate COMPANY=schunk
+make package COMPANY=schunk
+```
+
 ## Run The Full Pipeline
 
 ```bash
@@ -68,15 +83,6 @@ data/generated/schunk/xlsx-json-step3/
 data/generated/schunk/xlsx-json-step4/
 ```
 
-## Run Individual Stages
-
-```bash
-make extract COMPANY=schunk
-make transform COMPANY=schunk
-make validate COMPANY=schunk
-make package COMPANY=schunk
-```
-
 ## Inspect Reports
 
 Important review files:
@@ -85,6 +91,21 @@ Important review files:
 data/generated/schunk/xlsx-json-step2/<workbook>/mapping-report.json
 data/generated/schunk/xlsx-json-step3/<workbook>/validation-report.json
 data/generated/schunk/xlsx-json-step4/summary.json
+```
+
+Every stage also writes a timestamped terminal log:
+
+```text
+data/generated/schunk/logs/
+```
+
+The latest log for each stage is also copied to:
+
+```text
+data/generated/schunk/logs/step1-extract.latest.log
+data/generated/schunk/logs/step2-transform.latest.log
+data/generated/schunk/logs/step3-validate.latest.log
+data/generated/schunk/logs/step4-package.latest.log
 ```
 
 If validation reports errors, do not package or deploy the result as trusted

@@ -12,6 +12,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from excel_to_aasx.company_config import DEFAULT_COMPANY_CONFIG, load_company_config, reference_files
+from excel_to_aasx.logging import generated, warning
 
 
 DEFAULT_AAS_CORE_SCHEMA = Path(
@@ -49,7 +50,7 @@ def load_json(path: Path) -> dict[str, Any]:
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    print(f"generated {path}")
+    generated(path)
 
 
 def children(element: dict[str, Any]) -> list[dict[str, Any]]:
@@ -570,6 +571,17 @@ def main() -> None:
                 config,
             )
         )
+        counts = summaries[-1]["issueCounts"]
+        message = (
+            f"validated {workbook_dir.name}: "
+            f"errors={counts.get('error', 0)}, "
+            f"warnings={counts.get('warning', 0)}, "
+            f"info={counts.get('info', 0)}"
+        )
+        if counts.get("error", 0) or counts.get("warning", 0):
+            warning(message)
+        else:
+            print(message, flush=True)
     summary = {"workbooks": summaries}
     write_json(args.output_dir / "summary.json", summary)
 

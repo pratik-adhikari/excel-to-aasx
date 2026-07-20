@@ -35,6 +35,7 @@ data/generated/<company>/xlsx-json-step1/
 data/generated/<company>/xlsx-json-step2/
 data/generated/<company>/xlsx-json-step3/
 data/generated/<company>/xlsx-json-step4/
+data/generated/<company>/logs/
 ```
 
 Important review files:
@@ -46,13 +47,26 @@ summary.json
 *.aasx
 ```
 
-## Quick Start
+## Setup
 
 ```bash
 git submodule update --init --recursive
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -e .[dev]
+```
+
+## Run
+
+Extract Excel data only:
+
+```bash
+make extract COMPANY=schunk
+```
+
+Run the full pipeline:
+
+```bash
 make generate COMPANY=schunk
 ```
 

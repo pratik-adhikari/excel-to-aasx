@@ -14,6 +14,7 @@ from openpyxl.cell.cell import Cell, MergedCell
 from openpyxl.utils import get_column_letter
 
 from excel_to_aasx.company_config import DEFAULT_COMPANY_CONFIG, load_company_config
+from excel_to_aasx.logging import generated
 
 
 def text_or_empty(value: Any) -> str:
@@ -271,7 +272,7 @@ def write_workbook_outputs(workbook: dict[str, Any], output_dir: Path) -> None:
 
     workbook_path = workbook_dir / "workbook.json"
     workbook_path.write_text(json.dumps(workbook, indent=2) + "\n", encoding="utf-8")
-    print(f"generated {workbook_path}")
+    generated(workbook_path)
 
     for sheet_name, sheet in workbook["sheets"].items():
         sheet_path = workbook_dir / f"{slug(sheet_name)}.json"
@@ -287,7 +288,7 @@ def write_workbook_outputs(workbook: dict[str, Any], output_dir: Path) -> None:
             + "\n",
             encoding="utf-8",
         )
-        print(f"generated {sheet_path}")
+        generated(sheet_path)
 
 
 def parse_args() -> argparse.Namespace:

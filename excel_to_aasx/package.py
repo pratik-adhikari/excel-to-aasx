@@ -11,6 +11,8 @@ from typing import Any
 from urllib.parse import urlsplit
 from urllib.parse import quote, unquote
 
+from excel_to_aasx.logging import generated, warning
+
 SUPPORTED_KEY_TYPES = {
     "AnnotatedRelationshipElement",
     "AssetAdministrationShell",
@@ -47,7 +49,7 @@ def load_json(path: Path) -> dict[str, Any]:
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    print(f"generated {path}")
+    generated(path)
 
 
 def shell_id(environment: dict[str, Any]) -> str:
@@ -178,7 +180,7 @@ def build_file_store(missing_files: list[dict[str, str]]) -> Any:
             io.BytesIO(placeholder_bytes(record["path"], record["contentType"])),
             record["contentType"],
         )
-        print(
+        warning(
             "DUMMY supplementary file generated: "
             f"path={record['path']} contentType={record['contentType']} "
             "reason=referenced file missing"
