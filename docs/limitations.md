@@ -42,8 +42,43 @@ flowchart TD
 
 ## Dummy Values
 
-Mandatory AAS fields sometimes have no Excel value. The pipeline may generate a
-dummy value so the element remains visible and structurally valid.
+Mandatory fields are derived from the selected IDTA template, not from the
+Excel sheet title or visual layout. In the current implementation, a leaf
+element is treated as mandatory when the template contains:
+
+```text
+qualifiers[].type = SMT/Cardinality
+qualifiers[].value = One
+```
+
+Dummy generation currently applies only to these leaf element types:
+
+| AAS element type | Missing value behavior |
+| --- | --- |
+| `Property` | Fill `value` according to `valueType` |
+| `MultiLanguageProperty` | Fill English text with `Not Available` |
+| `File` | Fill `/dummy/not-available.txt` and default `contentType` if needed |
+| `Range` | Fill both `min` and `max` |
+
+Container elements such as `SubmodelElementCollection` and
+`SubmodelElementList` are not dummy-filled directly. Their children are checked
+recursively.
+
+Dummy values used by type:
+
+| `valueType` | Dummy value |
+| --- | --- |
+| `xs:string` and unknown types | `Not Available` |
+| `xs:boolean` | `false` |
+| integer types | `-1` |
+| decimal/float/double types | `-1.0` |
+| `xs:date` | `1970-01-01` |
+| `xs:dateTime` | `1970-01-01T00:00:00` |
+| `xs:anyURI` | `https://example.org/dummy/not-available` |
+
+The purpose is visibility and structural completeness. If the template says a
+field is mandatory but Excel provides no value, the generated AAS still exposes
+the element and the report records the dummy decision.
 
 Dummy values are marked with:
 
@@ -51,7 +86,32 @@ Dummy values are marked with:
 SourceValueStatus = DummyGenerated
 ```
 
+Dummy-generated rows are also listed in `mapping-report.json` under:
+
+```text
+submodels[].dummyGeneratedRows
+```
+
 This is not real product data. It is a review signal.
+
+## Missing Excel Values
+
+Some Excel rows describe a parameter but have no `Actual Value`. If the element
+is not mandatory, the pipeline should keep the element visible when it can be
+placed safely, but mark the source status instead of inventing product data.
+
+Such elements are marked with:
+
+```text
+SourceValueStatus = MissingInExcel
+```
+
+This distinction matters:
+
+| Status | Meaning |
+| --- | --- |
+| `MissingInExcel` | Excel mentioned the element, but did not provide an actual value |
+| `DummyGenerated` | The template required a value, so the pipeline inserted a typed placeholder |
 
 ## Supplementary Files
 
