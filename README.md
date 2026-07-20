@@ -43,9 +43,18 @@ Important review files:
 ```text
 mapping-report.json
 validation-report.json
+review/<sheet>/unmapped-rows.json
+review/<sheet>/preclassified-unmapped-rows.json
+review/<sheet>/dummy-generated.json
+review/<sheet>/matched-rows.json
 summary.json
 *.aasx
 ```
+
+In Step 2 logs, `preclassified_unmapped_excel_row` is diagnostic only: the
+first generic classifier did not directly place the row. `unresolved_excel_row`
+is the important value: it counts rows still not placed after the full
+transform. Review `unmapped-rows.json` for actual unresolved source data.
 
 ## Setup
 

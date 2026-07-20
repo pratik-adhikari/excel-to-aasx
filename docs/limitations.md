@@ -77,8 +77,8 @@ Dummy values used by type:
 | `xs:anyURI` | `https://example.org/dummy/not-available` |
 
 The purpose is visibility and structural completeness. If the template says a
-field is mandatory but Excel provides no value, the generated AAS still exposes
-the element and the report records the dummy decision.
+field is mandatory but Excel provides no value, the default policy generates a
+typed placeholder and records the decision.
 
 Dummy values are marked with:
 
@@ -94,11 +94,29 @@ submodels[].dummyGeneratedRows
 
 This is not real product data. It is a review signal.
 
+`generationPolicy.mandatoryMissingValue` controls this behavior:
+
+| Value | Behavior |
+| --- | --- |
+| `dummy` | Generate a typed placeholder and continue |
+| `error` | Fail generation when a mandatory value is absent |
+| `preserve-empty` | Keep an empty value and mark `MissingInExcel` |
+
 ## Missing Excel Values
 
-Some Excel rows describe a parameter but have no `Actual Value`. If the element
-is not mandatory, the pipeline should keep the element visible when it can be
-placed safely, but mark the source status instead of inventing product data.
+Some Excel rows describe a parameter but have no `Actual Value`. Handling is
+policy-controlled because both choices are valid in different review workflows:
+
+| `generationPolicy.emptyActualValue` | Behavior |
+| --- | --- |
+| `skip` | Do not instantiate non-mandatory blank standard-template rows |
+| `preserve-empty` | Instantiate safely matched rows with an empty value |
+| `dummy` | Instantiate safely matched rows with a typed dummy value |
+
+The default is `skip`. It prevents copied optional template branches from
+creating noisy AAS elements only because the workbook contains blank template
+rows. Users who need blank Excel rows to remain visible can set
+`emptyActualValue` to `preserve-empty` or `dummy` and review the result.
 
 Such elements are marked with:
 

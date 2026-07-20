@@ -89,9 +89,25 @@ Important review files:
 
 ```text
 data/generated/schunk/xlsx-json-step2/<workbook>/mapping-report.json
+data/generated/schunk/xlsx-json-step2/<workbook>/review/<sheet>/unmapped-rows.json
+data/generated/schunk/xlsx-json-step2/<workbook>/review/<sheet>/preclassified-unmapped-rows.json
+data/generated/schunk/xlsx-json-step2/<workbook>/review/<sheet>/dummy-generated.json
+data/generated/schunk/xlsx-json-step2/<workbook>/review/<sheet>/matched-rows.json
 data/generated/schunk/xlsx-json-step3/<workbook>/validation-report.json
 data/generated/schunk/xlsx-json-step4/summary.json
 ```
+
+Read Step 2 terminal summaries as two levels of evidence:
+
+```text
+preclassified_unmapped_excel_row=2, unresolved_excel_row=0
+```
+
+`preclassified_unmapped_excel_row` means the first generic classifier did not
+directly place those rows. They may still be handled by later transform logic.
+`unresolved_excel_row` means rows still not placed after the full transform.
+Use `review/<sheet>/unmapped-rows.json` for actual data that needs action.
+Use `review/<sheet>/preclassified-unmapped-rows.json` only for diagnostics.
 
 Every stage also writes a timestamped terminal log:
 

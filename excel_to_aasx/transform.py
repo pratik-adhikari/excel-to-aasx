@@ -16,6 +16,14 @@ from excel_to_aasx.company_config import DEFAULT_COMPANY_CONFIG, load_company_co
 from excel_to_aasx.logging import classified, generated, warning
 
 PLACEHOLDER_VALUES = {"", "#", "-", "n/a", "N/A", "not specified", "Not specified"}
+OPTIONAL_CARDINALITIES = {"ZeroToOne", "ZeroToMany"}
+DEFAULT_GENERATION_POLICY = {
+    "emptyActualValue": "skip",
+    "mandatoryMissingValue": "dummy",
+    "optionalEmptyTemplateBranches": "prune",
+    "reviewFiles": "always",
+    "logLevel": "normal",
+}
 GENERIC_ARBITRARY_SEMANTIC = "https://admin-shell.io/SMT/General/Arbitrary"
 TECHNICAL_ARBITRARY_PLACEHOLDERS = {
     "Section",
@@ -195,6 +203,41 @@ def meaningful_row(row: InputRow) -> bool:
 
 def has_actual_value(row: InputRow) -> bool:
     return row.actual_value not in PLACEHOLDER_VALUES
+
+
+def generation_policy(config: dict[str, Any]) -> dict[str, str]:
+    policy = {**DEFAULT_GENERATION_POLICY, **config.get("generationPolicy", {})}
+    allowed_values = {
+        "emptyActualValue": {"skip", "preserve-empty", "dummy"},
+        "mandatoryMissingValue": {"error", "dummy", "preserve-empty"},
+        "optionalEmptyTemplateBranches": {"prune", "keep-empty", "dummy"},
+        "reviewFiles": {"always", "issues-only", "off"},
+        "logLevel": {"quiet", "normal", "detailed"},
+    }
+    for key, allowed in allowed_values.items():
+        if policy[key] not in allowed:
+            raise ValueError(
+                f"Invalid generationPolicy.{key}={policy[key]!r}; "
+                f"expected one of {sorted(allowed)}"
+            )
+    return policy
+
+
+def row_has_mappable_empty_value(row: InputRow, policy: dict[str, str]) -> bool:
+    if has_actual_value(row):
+        return False
+    if policy["emptyActualValue"] not in {"preserve-empty", "dummy"}:
+        return False
+    if is_template_scaffold_row(row):
+        return False
+    if row.id_short.endswith(":"):
+        return False
+    lowered = row.actual_value.lower()
+    return not (lowered.startswith("see section") or lowered.startswith("list containing"))
+
+
+def row_can_enter_mapping(row: InputRow, policy: dict[str, str]) -> bool:
+    return meaningful_row(row) or row_has_mappable_empty_value(row, policy)
 
 
 def value_for(rows: list[InputRow], *id_shorts: str) -> str:
@@ -443,8 +486,19 @@ def best_candidate(
     return best, best_score
 
 
-def fill_element(element: dict[str, Any], row: InputRow) -> None:
+def fill_element(
+    element: dict[str, Any],
+    row: InputRow,
+    policy: dict[str, str] | None = None,
+) -> None:
+    policy = policy or DEFAULT_GENERATION_POLICY
     model_type = element.get("modelType")
+    if not has_actual_value(row):
+        if policy["emptyActualValue"] == "dummy":
+            fill_dummy_value(element)
+            return
+        if policy["emptyActualValue"] == "preserve-empty":
+            add_missing_value_status(element)
     if model_type == "MultiLanguageProperty":
         text_value, language = split_lang(row.actual_value)
         element["value"] = [{"language": language, "text": text_value}]
@@ -541,6 +595,7 @@ def infer_content_type(value: str) -> str:
 def fill_standard_matches(
     submodel: dict[str, Any],
     rows: list[InputRow],
+    policy: dict[str, str],
 ) -> tuple[list[dict[str, Any]], list[InputRow]]:
     candidates = candidate_elements(submodel)
     used_paths: set[str] = set()
@@ -548,7 +603,7 @@ def fill_standard_matches(
     unmatched: list[InputRow] = []
 
     for row in rows:
-        if not meaningful_row(row):
+        if not row_can_enter_mapping(row, policy):
             continue
         if is_technical_arbitrary_row(row):
             unmatched.append(row)
@@ -557,7 +612,7 @@ def fill_standard_matches(
         if candidate is None:
             unmatched.append(row)
             continue
-        fill_element(candidate.element, row)
+        fill_element(candidate.element, row, policy)
         used_paths.add(candidate.path)
         matched.append(match_record(row, candidate, match_score, "standard"))
 
@@ -738,6 +793,74 @@ def has_element_value(element: dict[str, Any]) -> bool:
     return True
 
 
+def has_source_value_status(element: dict[str, Any]) -> bool:
+    for qualifier in element.get("qualifiers", []) or []:
+        if isinstance(qualifier, dict) and qualifier.get("type") == "SourceValueStatus":
+            return True
+    return False
+
+
+def subtree_has_instance_content(element: dict[str, Any]) -> bool:
+    if has_source_value_status(element):
+        return True
+
+    model_type = text(element.get("modelType"))
+    if model_type == "Range":
+        return text(element.get("min")) != "" or text(element.get("max")) != ""
+    if model_type in {"Property", "File", "Blob", "ReferenceElement"}:
+        return text(element.get("value")) != ""
+    if model_type == "MultiLanguageProperty":
+        value = element.get("value")
+        return isinstance(value, list) and any(
+            text(item.get("text")) for item in value if isinstance(item, dict)
+        )
+
+    return any(subtree_has_instance_content(child) for child in children(element))
+
+
+def prune_uninstantiated_optional_branches(
+    element: dict[str, Any],
+    path: str = "",
+) -> list[dict[str, str]]:
+    current_id = text(element.get("idShort")) or "[]"
+    current_path = f"{path}/{current_id}" if path else current_id
+    records: list[dict[str, str]] = []
+
+    for field in ("submodelElements", "value"):
+        values = element.get(field)
+        if not isinstance(values, list):
+            continue
+
+        kept = []
+        for child in values:
+            if not isinstance(child, dict) or "modelType" not in child:
+                kept.append(child)
+                continue
+
+            records.extend(prune_uninstantiated_optional_branches(child, current_path))
+            child_id = text(child.get("idShort")) or "[]"
+            child_path = f"{current_path}/{child_id}"
+            if (
+                cardinality(child) in OPTIONAL_CARDINALITIES
+                and not subtree_has_instance_content(child)
+            ):
+                records.append(
+                    {
+                        "path": child_path,
+                        "idShort": child_id,
+                        "modelType": text(child.get("modelType")),
+                        "cardinality": cardinality(child),
+                        "reason": "Optional template branch had no mapped Excel values.",
+                    }
+                )
+                continue
+            kept.append(child)
+
+        element[field] = kept
+
+    return records
+
+
 def dummy_value_for(value_type: str) -> str:
     if value_type == "xs:boolean":
         return "false"
@@ -773,12 +896,55 @@ def fill_dummy_value(element: dict[str, Any]) -> None:
     add_source_value_status(element, "DummyGenerated")
 
 
-def add_mandatory_dummy_values(element: dict[str, Any], path: str = "") -> list[dict[str, Any]]:
+def fill_mandatory_missing_value(element: dict[str, Any], policy: dict[str, str]) -> str:
+    if policy["mandatoryMissingValue"] == "error":
+        return "error"
+    if policy["mandatoryMissingValue"] == "dummy":
+        fill_dummy_value(element)
+        return "dummy"
+
+    model_type = text(element.get("modelType"))
+    if model_type == "MultiLanguageProperty":
+        element["value"] = [{"language": "en", "text": ""}]
+    elif model_type == "File":
+        element["contentType"] = text(element.get("contentType")) or "text/plain"
+        element["value"] = ""
+    elif model_type == "Property":
+        element["value"] = ""
+    elif model_type == "Range":
+        element["min"] = ""
+        element["max"] = ""
+    add_missing_value_status(element)
+    return "preserve-empty"
+
+
+def add_mandatory_dummy_values(
+    element: dict[str, Any],
+    policy: dict[str, str] | None = None,
+    path: str = "",
+    skip_empty_optional_branches: bool = False,
+) -> list[dict[str, Any]]:
+    policy = policy or DEFAULT_GENERATION_POLICY
     id_short = text(element.get("idShort")) or "[]"
     current_path = f"{path}/{id_short}" if path else id_short
     records: list[dict[str, Any]] = []
+    if (
+        path
+        and skip_empty_optional_branches
+        and cardinality(element) in OPTIONAL_CARDINALITIES
+        and not subtree_has_instance_content(element)
+    ):
+        return records
+
     for child in children(element):
-        records.extend(add_mandatory_dummy_values(child, current_path))
+        records.extend(
+            add_mandatory_dummy_values(
+                child,
+                policy,
+                current_path,
+                skip_empty_optional_branches,
+            )
+        )
 
     model_type = text(element.get("modelType"))
     if model_type not in {"Property", "MultiLanguageProperty", "File", "Range"}:
@@ -786,20 +952,33 @@ def add_mandatory_dummy_values(element: dict[str, Any], path: str = "") -> list[
     if cardinality(element) != "One" or has_element_value(element):
         return records
 
-    fill_dummy_value(element)
+    action = fill_mandatory_missing_value(element, policy)
     record = {
         "path": current_path,
         "idShort": id_short,
         "modelType": model_type,
         "valueType": text(element.get("valueType")),
-        "reason": "Mandatory template element had no Excel value; dummy value generated.",
+        "policy": policy["mandatoryMissingValue"],
+        "reason": "Mandatory template element had no Excel value.",
     }
+    if action == "error":
+        record["reason"] += " Generation policy requires an error."
+        records.append(record)
+        raise ValueError(
+            "Mandatory value missing: "
+            f"path={record['path']} idShort={record['idShort']} "
+            f"modelType={record['modelType']} valueType={record['valueType']}"
+        )
+    if action == "dummy":
+        record["reason"] += " Dummy value generated."
+    else:
+        record["reason"] += " Empty value preserved."
     records.append(record)
     warning(
-        "DUMMY generated: "
+        "MANDATORY missing: "
         f"path={record['path']} idShort={record['idShort']} "
         f"modelType={record['modelType']} valueType={record['valueType']} "
-        "reason=mandatory value missing"
+        f"policy={record['policy']}"
     )
     return records
 
@@ -966,13 +1145,14 @@ def append_nameplate_address_information(
 def fill_handover_documents(
     submodel: dict[str, Any],
     rows: list[InputRow],
+    policy: dict[str, str],
 ) -> tuple[list[dict[str, Any]], list[InputRow]]:
     documents = find_element_by_idshort(submodel, "Documents")
     if documents is None:
-        return fill_standard_matches(submodel, rows)
+        return fill_standard_matches(submodel, rows, policy)
     template_items = children(documents)
     if not template_items:
-        return fill_standard_matches(submodel, rows)
+        return fill_standard_matches(submodel, rows, policy)
 
     groups = group_handover_rows(rows)
     if not groups:
@@ -989,13 +1169,13 @@ def fill_handover_documents(
         group_candidates = candidate_elements(document_item)
         used_paths: set[str] = set()
         for row in group:
-            if not meaningful_row(row):
+            if not row_can_enter_mapping(row, policy):
                 continue
             candidate, match_score = best_candidate(row, group_candidates, used_paths)
             if candidate is None:
                 unmatched.append(row)
                 continue
-            fill_element(candidate.element, row)
+            fill_element(candidate.element, row, policy)
             used_paths.add(candidate.path)
             record = match_record(row, candidate, match_score, f"handover-document-{index}")
             matched.append(record)
@@ -1061,6 +1241,71 @@ def load_reference(reference_dir: Path, file_name: str) -> dict[str, Any]:
     return load_json(reference_dir / file_name)
 
 
+def review_payload(
+    workbook: str,
+    product: str,
+    report: dict[str, Any],
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "workbook": workbook,
+        "productSlug": product,
+        "sheet": report["sheet"],
+        "submodel": report["submodel"],
+        "referenceFile": report["referenceFile"],
+        "generationPolicy": report["generationPolicy"],
+        "count": len(rows),
+        "rows": rows,
+    }
+
+
+def write_step2_review_files(
+    workbook_output_dir: Path,
+    workbook: str,
+    product_slug: str,
+    submodel_report: dict[str, Any],
+) -> None:
+    review_dir = workbook_output_dir / "review" / slug(submodel_report["sheet"])
+    review_files = {
+        "unmapped-rows.json": submodel_report["unmatchedRows"],
+        "preclassified-unmapped-rows.json": [
+            row
+            for row in submodel_report["rowClassifications"]
+            if row["classification"] == "unmapped_excel_row"
+        ],
+        "dummy-generated.json": submodel_report["dummyGeneratedRows"],
+        "skipped-template-scaffold.json": [
+            row
+            for row in submodel_report["rowClassifications"]
+            if row["classification"] == "template_scaffold"
+        ],
+        "optional-pruned.json": submodel_report["optionalPrunedRows"],
+        "matched-rows.json": submodel_report["matchedRows"],
+    }
+    for file_name, rows in review_files.items():
+        write_json(
+            review_dir / file_name,
+            review_payload(workbook, product_slug, submodel_report, rows),
+        )
+
+
+def should_write_review_files(policy: dict[str, str], submodel_report: dict[str, Any]) -> bool:
+    if policy["reviewFiles"] == "off":
+        return False
+    if policy["reviewFiles"] == "always":
+        return True
+    return bool(
+        submodel_report["unmatchedCount"]
+        or submodel_report["dummyGeneratedCount"]
+        or submodel_report["optionalPrunedCount"]
+    )
+
+
+def should_log(policy: dict[str, str], minimum: str = "normal") -> bool:
+    levels = {"quiet": 0, "normal": 1, "detailed": 2}
+    return levels[policy["logLevel"]] >= levels[minimum]
+
+
 def build_workbook(
     workbook_dir: Path,
     reference_dir: Path,
@@ -1069,6 +1314,7 @@ def build_workbook(
 ) -> dict[str, Any]:
     workbook = load_json(workbook_dir / "workbook.json")
     mappings = sheet_templates(config)
+    policy = generation_policy(config)
     all_rows: list[InputRow] = []
     sheet_rows: dict[str, list[InputRow]] = {}
     for sheet_name in mappings:
@@ -1093,6 +1339,7 @@ def build_workbook(
         "company": config.get("company"),
         "companyConfig": config.get("_path"),
         "referenceDir": str(reference_dir),
+        "generationPolicy": policy,
         "productSlug": product_slug,
         "submodels": [],
     }
@@ -1113,9 +1360,9 @@ def build_workbook(
         rows = sheet_rows[sheet_name]
         classifications = classify_rows(rows, reference_entries)
         if submodel_id_short == "HandoverDocumentation":
-            matched, unmatched = fill_handover_documents(submodel, rows)
+            matched, unmatched = fill_handover_documents(submodel, rows, policy)
         else:
-            matched, unmatched = fill_standard_matches(submodel, rows)
+            matched, unmatched = fill_standard_matches(submodel, rows, policy)
         inserted: list[dict[str, Any]] = []
         expanded_unmatched = unmatched
         if submodel_id_short == "Nameplate":
@@ -1126,12 +1373,35 @@ def build_workbook(
         if submodel_id_short == "TechnicalData":
             inserted = append_technical_arbitrary_properties(submodel, classifications)
             expanded_unmatched = [row for row in unmatched if not is_technical_arbitrary_row(row)]
-        dummy_records = add_mandatory_dummy_values(submodel)
+        pruned_records: list[dict[str, str]] = []
+        if policy["optionalEmptyTemplateBranches"] == "prune":
+            pruned_records = prune_uninstantiated_optional_branches(submodel)
+        if pruned_records and should_log(policy):
+            classified(
+                f"optional pruned {workbook_dir.name}/{sheet_name}: "
+                f"count={len(pruned_records)} details=mapping-report.json"
+            )
+        dummy_records = add_mandatory_dummy_values(
+            submodel,
+            policy,
+            skip_empty_optional_branches=policy["optionalEmptyTemplateBranches"] == "keep-empty",
+        )
         submodels.append(submodel)
         for concept in reference.get("conceptDescriptions", []):
             concept_descriptions.setdefault(concept["id"], concept)
         classification_records = [
             row_classification_record(classification) for classification in classifications
+        ]
+        unresolved_rows = [
+            {
+                "sheet": row.sheet,
+                "row": row.row,
+                "idShort": row.id_short,
+                "semanticId": row.semantic_id,
+                "value": row.actual_value,
+            }
+            for row in expanded_unmatched
+            if meaningful_row(row)
         ]
         classification_counts: dict[str, int] = {}
         for record in classification_records:
@@ -1142,38 +1412,46 @@ def build_workbook(
             "classified "
             f"{workbook_dir.name}/{sheet_name}: "
             + ", ".join(
-                f"{name}={count}" for name, count in sorted(classification_counts.items())
+                f"{'preclassified_unmapped_excel_row' if name == 'unmapped_excel_row' else name}={count}"
+                for name, count in sorted(classification_counts.items())
             )
+            + f", unresolved_excel_row={len(unresolved_rows)}"
         )
-        if classification_counts.get("unmapped_excel_row", 0):
+        if unresolved_rows:
             warning(message)
-        else:
+        elif should_log(policy):
             classified(message)
+        if should_log(policy, "detailed"):
+            for row in unresolved_rows:
+                warning(
+                    "unresolved row: "
+                    f"sheet={row['sheet']} row={row['row']} "
+                    f"idShort={row['idShort']} value={row['value']!r}"
+                )
+            for record in dummy_records:
+                warning(
+                    "mandatory record: "
+                    f"path={record['path']} idShort={record['idShort']} "
+                    f"policy={record['policy']}"
+                )
 
         submodel_report = {
             "sheet": sheet_name,
             "submodel": submodel_id_short,
             "referenceFile": reference_file,
+            "generationPolicy": policy,
             "templateEntryCount": len(reference_entries),
             "classificationCounts": classification_counts,
             "rowClassifications": classification_records,
             "matchedCount": len(matched),
             "expandedCount": len(inserted),
+            "optionalPrunedCount": len(pruned_records),
+            "optionalPrunedRows": pruned_records,
             "dummyGeneratedCount": len(dummy_records),
             "dummyGeneratedRows": dummy_records,
-            "unmatchedCount": len([row for row in expanded_unmatched if meaningful_row(row)]),
+            "unmatchedCount": len(unresolved_rows),
             "matchedRows": matched + inserted,
-            "unmatchedRows": [
-                {
-                    "sheet": row.sheet,
-                    "row": row.row,
-                    "idShort": row.id_short,
-                    "semanticId": row.semantic_id,
-                    "value": row.actual_value,
-                }
-                for row in expanded_unmatched
-                if meaningful_row(row)
-            ],
+            "unmatchedRows": unresolved_rows,
             "skippedRows": [
                 {
                     "sheet": row.sheet,
@@ -1188,6 +1466,13 @@ def build_workbook(
         }
         report["submodels"].append(submodel_report)
         write_json(workbook_output_dir / f"{slug(sheet_name)}.json", {"submodels": [submodel]})
+        if should_write_review_files(policy, submodel_report):
+            write_step2_review_files(
+                workbook_output_dir,
+                workbook["workbook"],
+                product_slug,
+                submodel_report,
+            )
 
     environment = {
         "assetAdministrationShells": [

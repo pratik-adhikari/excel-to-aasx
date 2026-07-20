@@ -1,3 +1,5 @@
+import json
+
 from excel_to_aasx.transform import (
     GENERIC_ARBITRARY_SEMANTIC,
     InputRow,
@@ -6,9 +8,12 @@ from excel_to_aasx.transform import (
     append_technical_arbitrary_properties,
     build_shell,
     fill_element,
+    generation_policy,
     normalize_instance_payload,
     normalize_value,
+    prune_uninstantiated_optional_branches,
     thumbnail_for,
+    write_step2_review_files,
 )
 
 
@@ -261,7 +266,8 @@ def test_add_mandatory_dummy_values_marks_missing_leaf() -> None:
             "idShort": "URIOfTheProduct",
             "modelType": "Property",
             "valueType": "xs:anyURI",
-            "reason": "Mandatory template element had no Excel value; dummy value generated.",
+            "policy": "dummy",
+            "reason": "Mandatory template element had no Excel value. Dummy value generated.",
         }
     ]
     mandatory = submodel["submodelElements"][0]
@@ -269,3 +275,130 @@ def test_add_mandatory_dummy_values_marks_missing_leaf() -> None:
     assert mandatory["value"] == "https://example.org/dummy/not-available"
     assert mandatory["qualifiers"][-1]["value"] == "DummyGenerated"
     assert "value" not in optional
+
+
+def test_prune_uninstantiated_optional_branches_removes_empty_optional_tree() -> None:
+    submodel = {
+        "idShort": "CarbonFootprint",
+        "modelType": "Submodel",
+        "submodelElements": [
+            {
+                "idShort": "ProductOrSectorSpecificCarbonFootprints",
+                "modelType": "SubmodelElementList",
+                "qualifiers": [
+                    {"type": "SMT/Cardinality", "valueType": "xs:string", "value": "ZeroToOne"}
+                ],
+                "value": [
+                    {
+                        "modelType": "SubmodelElementCollection",
+                        "value": [
+                            {
+                                "idShort": "PcfRuleName",
+                                "modelType": "Property",
+                                "valueType": "xs:string",
+                                "qualifiers": [
+                                    {"type": "SMT/Cardinality", "valueType": "xs:string", "value": "One"}
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+
+    records = prune_uninstantiated_optional_branches(submodel)
+
+    assert records == [
+        {
+            "path": "CarbonFootprint/ProductOrSectorSpecificCarbonFootprints",
+            "idShort": "ProductOrSectorSpecificCarbonFootprints",
+            "modelType": "SubmodelElementList",
+            "cardinality": "ZeroToOne",
+            "reason": "Optional template branch had no mapped Excel values.",
+        }
+    ]
+    assert submodel["submodelElements"] == []
+
+
+def test_prune_uninstantiated_optional_branches_keeps_optional_tree_with_value() -> None:
+    submodel = {
+        "idShort": "CarbonFootprint",
+        "modelType": "Submodel",
+        "submodelElements": [
+            {
+                "idShort": "ProductOrSectorSpecificCarbonFootprints",
+                "modelType": "SubmodelElementList",
+                "qualifiers": [
+                    {"type": "SMT/Cardinality", "valueType": "xs:string", "value": "ZeroToOne"}
+                ],
+                "value": [
+                    {
+                        "modelType": "SubmodelElementCollection",
+                        "value": [
+                            {
+                                "idShort": "PcfRuleName",
+                                "modelType": "Property",
+                                "valueType": "xs:string",
+                                "value": "ISO 14067",
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+
+    records = prune_uninstantiated_optional_branches(submodel)
+
+    assert records == []
+    assert submodel["submodelElements"][0]["idShort"] == "ProductOrSectorSpecificCarbonFootprints"
+
+
+def test_write_step2_review_files_splits_mapping_report_for_review(tmp_path) -> None:
+    submodel_report = {
+        "sheet": "Carbon Footprint",
+        "submodel": "CarbonFootprint",
+        "referenceFile": "published/Carbon Footprint/template.json",
+        "generationPolicy": generation_policy({}),
+        "rowClassifications": [
+            {"row": 10, "classification": "template_scaffold"},
+            {"row": 11, "classification": "standard_template_element"},
+            {"row": 12, "idShort": "Unknown", "classification": "unmapped_excel_row"},
+        ],
+        "matchedRows": [{"row": 11, "idShort": "PcfCO2eq", "value": "32.09"}],
+        "unmatchedRows": [{"row": 13, "idShort": "LateUnmatched", "value": "x"}],
+        "dummyGeneratedRows": [{"path": "CarbonFootprint/Mandatory"}],
+        "optionalPrunedRows": [{"path": "CarbonFootprint/Optional"}],
+    }
+
+    write_step2_review_files(tmp_path, "product.xlsx", "product", submodel_report)
+
+    review_dir = tmp_path / "review" / "carbon-footprint"
+    unmapped = json.loads((review_dir / "unmapped-rows.json").read_text())
+    preclassified_unmapped = json.loads((review_dir / "preclassified-unmapped-rows.json").read_text())
+    scaffold = json.loads((review_dir / "skipped-template-scaffold.json").read_text())
+    matched = json.loads((review_dir / "matched-rows.json").read_text())
+
+    assert unmapped["count"] == 1
+    assert unmapped["generationPolicy"]["mandatoryMissingValue"] == "dummy"
+    assert unmapped["rows"][0]["idShort"] == "LateUnmatched"
+    assert preclassified_unmapped["rows"][0]["idShort"] == "Unknown"
+    assert scaffold["rows"] == [{"row": 10, "classification": "template_scaffold"}]
+    assert matched["rows"][0]["idShort"] == "PcfCO2eq"
+
+
+def test_generation_policy_merges_defaults_and_validates_values() -> None:
+    policy = generation_policy({"generationPolicy": {"reviewFiles": "issues-only"}})
+
+    assert policy["emptyActualValue"] == "skip"
+    assert policy["reviewFiles"] == "issues-only"
+
+
+def test_generation_policy_rejects_unknown_values() -> None:
+    try:
+        generation_policy({"generationPolicy": {"mandatoryMissingValue": "guess"}})
+    except ValueError as error:
+        assert "generationPolicy.mandatoryMissingValue" in str(error)
+    else:
+        raise AssertionError("invalid generation policy should fail")

@@ -1,5 +1,12 @@
 {
   "format": "idta-schunk-workbook",
+  "generationPolicy": {
+    "emptyActualValue": "skip",
+    "mandatoryMissingValue": "dummy",
+    "optionalEmptyTemplateBranches": "prune",
+    "reviewFiles": "always",
+    "logLevel": "detailed"
+  },
   "sheets": [
     {
       "sheet": "Digital Nameplate",
