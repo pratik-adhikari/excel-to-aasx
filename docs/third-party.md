@@ -1,8 +1,7 @@
 # Third-Party Dependencies
 
-This project should not reimplement AAS standards or maintained parser/SDK
-behavior. Third-party packages and submodules define the standard surfaces that
-the local pipeline builds on.
+The generator uses a small set of external libraries and reference repositories
+for workbook reading, template structure, AAS validation, and AASX packaging.
 
 ## Why Third-Party Code Is Needed
 
@@ -18,10 +17,8 @@ flowchart LR
     E --> I[Read/write AAS JSON and AASX]
 ```
 
-Without these dependencies, this repo would need to maintain its own Excel
-reader, IDTA template copies, AAS metamodel validator, and AASX packager. That
-would increase review burden and risk divergence from maintained community
-tools.
+These dependencies keep the local code focused on extraction, mapping, and
+evidence generation.
 
 ## Python Dependencies
 
@@ -41,9 +38,9 @@ tools.
 | `third_party/aas-core-works/aas-core-codegen` | Generated AAS JSON Schema source used for schema validation |
 | `third_party/aas-core-works/aas-core3.0-python` | Typed AAS V3.0 model deserialization and verification |
 
-## Ownership Rule
+## Local Ownership
 
-Do not edit files inside `third_party/`. Project-specific behavior belongs in:
+Project-specific behavior belongs in:
 
 ```text
 configs/
@@ -52,5 +49,5 @@ tests/
 docs/
 ```
 
-If an upstream tool is missing a required feature, add a small local adapter and
-document the gap instead of patching the submodule.
+Submodule contents are treated as reference inputs. Local adapters should stay
+outside `third_party/`.
