@@ -16,3 +16,9 @@ Excel workbook
 This project should stay independent from any BaSyx server/runtime deployment.
 Server repositories can consume the generated `.aasx` files or call this tool
 from CI.
+
+## Documentation
+
+- `docs/architecture.md`
+- `docs/quickstart.md`
+- `docs/limitations.md`
