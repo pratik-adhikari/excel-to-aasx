@@ -81,6 +81,7 @@ data/generated/schunk/xlsx-json-step1/
 data/generated/schunk/xlsx-json-step2/
 data/generated/schunk/xlsx-json-step3/
 data/generated/schunk/xlsx-json-step4/
+data/generated/schunk/aasx/
 ```
 
 ## Inspect Reports
@@ -95,6 +96,7 @@ data/generated/schunk/xlsx-json-step2/<workbook>/review/<sheet>/dummy-generated.
 data/generated/schunk/xlsx-json-step2/<workbook>/review/<sheet>/matched-rows.json
 data/generated/schunk/xlsx-json-step3/<workbook>/validation-report.json
 data/generated/schunk/xlsx-json-step4/summary.json
+data/generated/schunk/aasx/summary.json
 ```
 
 Read Step 2 terminal summaries as two levels of evidence:

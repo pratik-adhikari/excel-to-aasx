@@ -6,6 +6,7 @@ import argparse
 import datetime
 import io
 import json
+import shutil
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -245,6 +246,26 @@ def package_workbook(workbook_dir: Path, output_dir: Path) -> dict[str, Any]:
     }
 
 
+def publish_aasx_collection(output_dir: Path, summaries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    collection_dir = output_dir.parent / "aasx"
+    collection_dir.mkdir(parents=True, exist_ok=True)
+    published = []
+    for summary in summaries:
+        source = Path(summary["aasx"])
+        target = collection_dir / source.name
+        shutil.copy2(source, target)
+        generated(target)
+        published.append(
+            {
+                "workbook": summary["workbook"],
+                "source": str(source),
+                "aasx": str(target),
+                "aasxSizeBytes": target.stat().st_size,
+            }
+        )
+    return published
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input-dir", type=Path, required=True)
@@ -273,7 +294,12 @@ def main() -> None:
             continue
         assert_validated(workbook_dir, args.validation_dir)
         summaries.append(package_workbook(workbook_dir, args.output_dir))
-    write_json(args.output_dir / "summary.json", {"workbooks": summaries})
+    published_aasx = publish_aasx_collection(args.output_dir, summaries)
+    write_json(
+        args.output_dir / "summary.json",
+        {"workbooks": summaries, "publishedAasx": published_aasx},
+    )
+    write_json(args.output_dir.parent / "aasx" / "summary.json", {"aasx": published_aasx})
 
 
 if __name__ == "__main__":

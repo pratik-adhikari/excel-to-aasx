@@ -35,6 +35,7 @@ data/generated/<company>/xlsx-json-step1/
 data/generated/<company>/xlsx-json-step2/
 data/generated/<company>/xlsx-json-step3/
 data/generated/<company>/xlsx-json-step4/
+data/generated/<company>/aasx/
 data/generated/<company>/logs/
 ```
 
@@ -48,7 +49,7 @@ review/<sheet>/preclassified-unmapped-rows.json
 review/<sheet>/dummy-generated.json
 review/<sheet>/matched-rows.json
 summary.json
-*.aasx
+aasx/*.aasx
 ```
 
 In Step 2 logs, `preclassified_unmapped_excel_row` is diagnostic only: the

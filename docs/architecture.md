@@ -33,7 +33,7 @@ flowchart TD
 | Step 1 extraction | `xlsx-json-step1/` | Capture workbook content as reviewable neutral JSON |
 | Step 2 transform | `xlsx-json-step2/` | Deep-copy official templates and fill values from extracted rows |
 | Step 3 validation | `xlsx-json-step3/` | Check AAS schema, SDK verification, template shape, project rules |
-| Step 4 package | `xlsx-json-step4/` | Write package-ready JSON and AASX, then roundtrip-read it |
+| Step 4 package | `xlsx-json-step4/`, `aasx/` | Write package-ready JSON and AASX, roundtrip-read it, and publish flat AASX copies |
 
 ## Artifact Flow
 
@@ -139,6 +139,10 @@ xlsx-json-step3/
 
 xlsx-json-step4/
   environment.json
+  *.aasx
+  summary.json
+
+aasx/
   *.aasx
   summary.json
 
