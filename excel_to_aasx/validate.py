@@ -6,7 +6,6 @@ import argparse
 import datetime
 import json
 import re
-import sys
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -19,7 +18,6 @@ DEFAULT_AAS_CORE_SCHEMA = Path(
     "third_party/aas-core-works/aas-core-codegen/dev/test_data/main/jsonschema/"
     "expected/aas_core_meta.v3/expected_output/schema.json"
 )
-DEFAULT_AAS_CORE_PYTHON = Path("third_party/aas-core-works/aas-core3.0-python")
 THIRD_PARTY_LOCK = Path("third_party/references.lock.json")
 FORBIDDEN_KEYS = {
     "sheet",
@@ -292,28 +290,18 @@ def validate_aas_core_schema(
 
 def validate_aas_core_python(
     environment: dict[str, Any],
-    sdk_path: Path | None,
+    enabled: bool = True,
 ) -> dict[str, Any]:
     result: dict[str, Any] = {
-        "enabled": bool(sdk_path),
-        "sdk": str(sdk_path) if sdk_path else None,
-        "source": "aas-core-works/aas-core3.0-python typed deserialization and verification",
+        "enabled": enabled,
+        "package": "aas-core3.0",
+        "source": "aas-core3.0 PyPI package typed deserialization and verification",
         "version": None,
         "issueCounts": {"error": 0, "warning": 0, "info": 0},
         "issues": [],
     }
-    if not sdk_path:
+    if not enabled:
         return result
-    if not sdk_path.exists():
-        result["issues"].append(
-            issue("error", "aas-core-python-missing", f"SDK path not found: {sdk_path}")
-        )
-        result["issueCounts"] = count_by_severity(result["issues"])
-        return result
-
-    sdk_import_path = str(sdk_path.resolve())
-    if sdk_import_path not in sys.path:
-        sys.path.insert(0, sdk_import_path)
 
     try:
         import aas_core3
@@ -324,7 +312,7 @@ def validate_aas_core_python(
             issue(
                 "error",
                 "aas-core-python-unavailable",
-                f"aas-core3.0-python could not be imported from {sdk_path}: {exc}",
+                f"aas-core3.0 package could not be imported: {exc}",
             )
         )
         result["issueCounts"] = count_by_severity(result["issues"])
@@ -460,7 +448,7 @@ def validate_workbook(
     reference_dir: Path,
     output_dir: Path,
     aas_core_schema: Path | None,
-    aas_core_python: Path | None,
+    aas_core_python: bool,
     config: dict[str, Any],
 ) -> dict[str, Any]:
     environment_path = workbook_dir / "environment.json"
@@ -549,7 +537,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reference-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--aas-core-schema", type=Path, default=DEFAULT_AAS_CORE_SCHEMA)
-    parser.add_argument("--aas-core-python", type=Path, default=DEFAULT_AAS_CORE_PYTHON)
+    parser.add_argument("--skip-aas-core-python", action="store_true")
     parser.add_argument("--company-config", type=Path, default=DEFAULT_COMPANY_CONFIG)
     return parser.parse_args()
 
@@ -567,7 +555,7 @@ def main() -> None:
                 args.reference_dir,
                 args.output_dir,
                 args.aas_core_schema,
-                args.aas_core_python,
+                not args.skip_aas_core_python,
                 config,
             )
         )

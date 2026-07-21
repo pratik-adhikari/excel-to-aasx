@@ -1,13 +1,8 @@
-from pathlib import Path
-
 from excel_to_aasx.validate import validate_aas_core_python
 
 
-SDK_PATH = Path("third_party/aas-core-works/aas-core3.0-python")
-
-
 def test_aas_core_python_accepts_minimal_environment() -> None:
-    result = validate_aas_core_python({}, SDK_PATH)
+    result = validate_aas_core_python({})
 
     assert result["issueCounts"] == {"error": 0, "warning": 0, "info": 0}
 
@@ -26,7 +21,7 @@ def test_aas_core_python_reports_duplicate_languages() -> None:
         ]
     }
 
-    result = validate_aas_core_python(environment, SDK_PATH)
+    result = validate_aas_core_python(environment)
 
     assert result["issueCounts"]["error"] == 1
     assert result["issues"][0]["code"] == "aas-core-python-verification"

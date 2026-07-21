@@ -26,6 +26,7 @@ evidence generation.
 | --- | --- |
 | `openpyxl` | Reads XLSX workbooks, cells, formulas, comments, hyperlinks, merged ranges |
 | `jsonschema` | Runs JSON Schema validation for generated AAS environments |
+| `aas-core3.0` | Typed AAS V3.0 model deserialization and verification |
 | `basyx-python-sdk` | Reads/writes AAS JSON and packages AASX files |
 | `PyYAML` | Reserved for mapping/config formats if YAML mappings are introduced |
 | `pytest` | Test runner for this package |
@@ -36,7 +37,6 @@ evidence generation.
 | --- | --- |
 | `third_party/admin-shell-io/submodel-templates` | Official IDTA/Admin Shell submodel templates used as structure references |
 | `third_party/aas-core-works/aas-core-codegen` | Generated AAS JSON Schema source used for schema validation |
-| `third_party/aas-core-works/aas-core3.0-python` | Typed AAS V3.0 model deserialization and verification |
 
 ## Local Ownership
 
