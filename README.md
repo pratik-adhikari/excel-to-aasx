@@ -24,7 +24,7 @@ configs/companies/<company>.json
 configs/formats/<format>.json
 data/input/<company>/*.xlsx
 third_party/admin-shell-io/submodel-templates
-third_party/aas-core-works/aas-core-codegen
+third_party/aas-core-works/aas-core-schema/schema.json
 ```
 
 ## Outputs
@@ -59,7 +59,6 @@ transform. Review `unmapped-rows.json` for actual unresolved source data.
 ## Setup
 
 ```bash
-git submodule update --init --recursive
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -e .[dev]

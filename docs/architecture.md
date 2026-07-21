@@ -15,7 +15,7 @@ flowchart TD
     D --> G[Template-shaped AAS environment JSON]
     D --> H[Mapping report]
     G --> I[Step 3: Validation]
-    J[aas-core schema and Python SDK] --> I
+    J[vendored aas-core schema and Python SDK] --> I
     F --> I
     I --> K[Validation report]
     K --> L{Errors?}

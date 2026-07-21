@@ -1,0 +1,23 @@
+{
+  "repositories": {
+    "admin-shell-io/submodel-templates": {
+      "url": "https://github.com/admin-shell-io/submodel-templates",
+      "commit": "b5fe9ae671520b87adc33c67c44ccdab4373c2b1",
+      "path": "third_party/admin-shell-io/submodel-templates",
+      "storage": "vendored"
+    },
+    "aas-core-codegen": {
+      "url": "https://github.com/aas-core-works/aas-core-codegen",
+      "commit": "e1de3f45216ce8b5dd116367a8668dd7f9e29a9a",
+      "sourcePath": "dev/test_data/main/jsonschema/expected/aas_core_meta.v3/expected_output/schema.json",
+      "path": "third_party/aas-core-works/aas-core-schema/schema.json",
+      "storage": "vendored-artifact"
+    },
+    "aas-core-meta": {
+      "url": "https://github.com/aas-core-works/aas-core-meta",
+      "commit": "f1d97f60b34d2dc97a8004ccfb3fc28487b91c7a",
+      "sourcePath": "aas_core_meta/v3.py",
+      "storage": "upstream-input-to-aas-core-codegen-schema"
+    }
+  }
+}

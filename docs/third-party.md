@@ -31,12 +31,32 @@ evidence generation.
 | `PyYAML` | Reserved for mapping/config formats if YAML mappings are introduced |
 | `pytest` | Test runner for this package |
 
+## Vendored Reference Inputs
+
+These upstream reference files are intentionally stored as normal tracked files
+instead of nested Git submodules. This keeps setup simple for users and avoids
+extra clone steps.
+
+| Path | Source | Role |
+| --- | --- |
+| `third_party/admin-shell-io/submodel-templates` | `admin-shell-io/submodel-templates` at `b5fe9ae671520b87adc33c67c44ccdab4373c2b1` | Official IDTA/Admin Shell submodel templates used as structure references |
+| `third_party/aas-core-works/aas-core-schema/schema.json` | `aas-core-works/aas-core-codegen` at `e1de3f45216ce8b5dd116367a8668dd7f9e29a9a` | Generated AAS JSON Schema used for validation |
+
+The schema artifact was generated from `aas-core-meta` commit
+`f1d97f60b34d2dc97a8004ccfb3fc28487b91c7a`, as recorded by the upstream
+`aas-core-codegen` test data.
+
+Detailed provenance is tracked in:
+
+```text
+third_party/references.lock.json
+third_party/admin-shell-io/submodel-templates/PROVENANCE.md
+third_party/aas-core-works/aas-core-schema/PROVENANCE.md
+```
+
 ## Git Submodules
 
-| Submodule | Role |
-| --- | --- |
-| `third_party/admin-shell-io/submodel-templates` | Official IDTA/Admin Shell submodel templates used as structure references |
-| `third_party/aas-core-works/aas-core-codegen` | Generated AAS JSON Schema source used for schema validation |
+There are no nested Git submodules in this repository.
 
 ## Local Ownership
 
@@ -49,5 +69,5 @@ tests/
 docs/
 ```
 
-Submodule contents are treated as reference inputs. Local adapters should stay
-outside `third_party/`.
+Vendored third-party contents are treated as reference inputs. Local adapters
+should stay outside `third_party/`.

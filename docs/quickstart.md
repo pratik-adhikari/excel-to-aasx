@@ -11,12 +11,6 @@ python3 -m venv .venv
 pip install -e .[dev]
 ```
 
-Initialize reference submodules:
-
-```bash
-git submodule update --init --recursive
-```
-
 This setup does not extract Excel data and does not generate AASX output. It
 only prepares the local Python environment.
 

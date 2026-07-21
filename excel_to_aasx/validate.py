@@ -15,8 +15,7 @@ from excel_to_aasx.logging import generated, warning
 
 
 DEFAULT_AAS_CORE_SCHEMA = Path(
-    "third_party/aas-core-works/aas-core-codegen/dev/test_data/main/jsonschema/"
-    "expected/aas_core_meta.v3/expected_output/schema.json"
+    "third_party/aas-core-works/aas-core-schema/schema.json"
 )
 THIRD_PARTY_LOCK = Path("third_party/references.lock.json")
 FORBIDDEN_KEYS = {
@@ -235,7 +234,7 @@ def validate_aas_core_schema(
     result: dict[str, Any] = {
         "enabled": bool(schema_path),
         "schema": str(schema_path) if schema_path else None,
-        "source": "aas-core-works/aas-core-codegen generated JSON Schema",
+        "source": "vendored aas-core-works/aas-core-codegen generated JSON Schema",
         "commit": aas_core_codegen_commit(schema_path) if schema_path else None,
         "issueCounts": {"error": 0, "warning": 0, "info": 0},
         "issues": [],
