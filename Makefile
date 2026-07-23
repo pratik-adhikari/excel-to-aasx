@@ -17,9 +17,8 @@ VENV_PYTHON := $(VENV)/bin/python
 help:
 	@awk 'BEGIN {FS = ":.*##"; printf "excel-to-aasx commands:\n\n"} /^[a-zA-Z_-]+:.*?##/ {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-setup: ## Initialize required Git submodules and verify reference inputs
-	@git submodule update --init --recursive
-	@test -d "$(REFERENCE_DIR)/published" || { echo "Missing IDTA template submodule at $(REFERENCE_DIR)" >&2; exit 1; }
+setup: ## Verify vendored reference inputs and initialize the Python environment
+	@test -d "$(REFERENCE_DIR)/published" || { echo "Missing vendored IDTA template tree at $(REFERENCE_DIR)" >&2; exit 1; }
 	@test -f third_party/aas-core-works/aas-core-schema/schema.json || { echo "Missing AAS core schema at third_party/aas-core-works/aas-core-schema/schema.json" >&2; exit 1; }
 	@if [ ! -x "$(VENV_PYTHON)" ]; then \
 		echo "Creating virtual environment at $(VENV)"; \

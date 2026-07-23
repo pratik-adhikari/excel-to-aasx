@@ -34,7 +34,7 @@ def _requires_schunk_config(request: pytest.FixtureRequest) -> None:
     if not SCHUNK_CONFIG.exists():
         pytest.skip("schunk company config not available")
     if not REFERENCE_DIR.exists():
-        pytest.skip("admin-shell-io submodel-templates vendor tree not available")
+        pytest.skip("vendored admin-shell-io template tree not available")
 
 
 # ──────────────────────────────────────────────────────────────────────────────

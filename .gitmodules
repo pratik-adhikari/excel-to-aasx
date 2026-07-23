@@ -1,3 +1,0 @@
-[submodule "third_party/admin-shell-io"]
-	path = third_party/admin-shell-io
-	url = https://github.com/admin-shell-io/submodel-templates.git

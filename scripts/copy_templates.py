@@ -2,11 +2,8 @@
 scripts/copy_templates.py
 ─────────────────────────
 Copy only the IDTA template JSON files that are actually referenced in the
-company config (one per sheet) out of the large third_party submodel-templates
-repo into a small, project-specific directory.
-
-This avoids committing or shipping the entire 147 MB vendor repo; only the
-5 (or however many) files the pipeline uses are materialised in data/templates/.
+company config (one per sheet) from the vendored reference tree into a small,
+project-specific directory.
 
 Usage (called by `make templates`):
     python3 scripts/copy_templates.py \
@@ -36,7 +33,7 @@ def main() -> None:
     parser.add_argument("--company-config", type=Path, required=True,
                         help="Path to configs/companies/<company>.json")
     parser.add_argument("--reference-dir", type=Path, required=True,
-                        help="Root of the admin-shell-io submodel-template submodule")
+                        help="Root of the vendored admin-shell-io template tree")
     parser.add_argument("--dest-dir", type=Path, required=True,
                         help="Destination directory for copied template files")
     args = parser.parse_args()
