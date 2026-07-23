@@ -5,39 +5,15 @@ from __future__ import annotations
 import argparse
 import copy
 import datetime
-import json
 import re
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlsplit, urlunsplit
 
-from excel_to_aasx.company_config import load_company_config, sheet_templates
-from excel_to_aasx.cli_output import classified, generated, warning
-from excel_to_aasx.io_utils import load_json, write_json
-from excel_to_aasx.models import Candidate, InputRow, RowClassification, TemplateEntry
-# Re-export these helpers from their focused modules for callers that imported
-# them from transform before the implementation was split.
-from excel_to_aasx.value_normalise import (  # noqa: F401
-    infer_value_type,
-    normalize_value,
-    normalize_uri_value,
-    normalize_date,
-    normalize_datetime,
-    infer_content_type,
-    dummy_value_for,
-    normalize_instance_payload,
-    deduplicate_language_strings,
-    remove_template_qualifiers,
-    deduplicate_child_idshorts,
-    remove_empty_idshorts,
-)
-from excel_to_aasx.matching import (  # noqa: F401
-    score,
-    best_candidate,
-    candidate_elements,
-    MIN_ACCEPTANCE_SCORE,
-    AMBIGUITY_WINDOW,
-)
+from excel_to_aasx.core.company_config import load_company_config, sheet_templates
+from excel_to_aasx.utils.cli_output import classified, warning
+from excel_to_aasx.utils.io_utils import load_json, write_json
+from excel_to_aasx.core.models import Candidate, InputRow, RowClassification, TemplateEntry
 
 PLACEHOLDER_VALUES = {"", "#", "-", "n/a", "N/A", "not specified", "Not specified"}
 OPTIONAL_CARDINALITIES = {"ZeroToOne", "ZeroToMany"}
@@ -49,6 +25,7 @@ DEFAULT_GENERATION_POLICY = {
     "logLevel": "normal",
 }
 GENERIC_ARBITRARY_SEMANTIC = "https://admin-shell.io/SMT/General/Arbitrary"
+MIN_ACCEPTANCE_SCORE = 40
 # Matches this close are retained but logged for human review because the
 # scoring model cannot distinguish them reliably.
 AMBIGUITY_WINDOW = 8

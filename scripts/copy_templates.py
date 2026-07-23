@@ -18,7 +18,7 @@ import argparse
 import shutil
 from pathlib import Path
 
-from excel_to_aasx.company_config import load_company_config
+from excel_to_aasx.core.company_config import load_company_config
 
 
 def load_config(path: Path) -> dict:

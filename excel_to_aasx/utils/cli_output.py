@@ -1,7 +1,4 @@
-"""Terminal output helpers for pipeline stages.
-
-Named cli_output (not logging) to avoid shadowing the stdlib logging module.
-"""
+"""Terminal output helpers for pipeline stages."""
 
 from __future__ import annotations
 
@@ -34,8 +31,6 @@ def classified(message: str) -> None:
 
 
 def warning(message: str) -> None:
-    # Keep machine-readable pipeline output on stdout; diagnostics belong on
-    # stderr so callers can safely pipe stdout into another tool.
     print(color(f"WARNING {message}", RED), file=sys.stderr, flush=True)
 
 

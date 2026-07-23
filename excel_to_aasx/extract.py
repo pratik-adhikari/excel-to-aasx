@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import datetime
-import json
 import re
 from pathlib import Path
 from typing import Any
@@ -13,9 +12,9 @@ from openpyxl import load_workbook
 from openpyxl.cell.cell import Cell, MergedCell
 from openpyxl.utils import get_column_letter
 
-from excel_to_aasx.company_config import load_company_config
-from excel_to_aasx.cli_output import generated, warning
-from excel_to_aasx.io_utils import write_json
+from excel_to_aasx.core.company_config import load_company_config
+from excel_to_aasx.utils.cli_output import warning
+from excel_to_aasx.utils.io_utils import write_json
 
 
 def text_or_empty(value: Any) -> str:

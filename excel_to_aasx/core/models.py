@@ -1,8 +1,4 @@
-"""Shared data models for the AAS transform pipeline.
-
-Extracted from transform.py to avoid circular dependencies between
-transform, matching, and value_normalise.
-"""
+"""Shared data models for the AAS transform pipeline."""
 
 from __future__ import annotations
 

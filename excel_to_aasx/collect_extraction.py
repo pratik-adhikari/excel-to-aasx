@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import argparse
-import json
 import shutil
 from pathlib import Path
 from typing import Any
 
-from excel_to_aasx.company_config import load_company_config
-from excel_to_aasx.cli_output import generated
-from excel_to_aasx.io_utils import write_json
+from excel_to_aasx.core.company_config import load_company_config
+from excel_to_aasx.utils.io_utils import write_json
 
 
 

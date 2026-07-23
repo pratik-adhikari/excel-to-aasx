@@ -12,8 +12,8 @@ from typing import Any
 from urllib.parse import urlsplit
 from urllib.parse import quote, unquote
 
-from excel_to_aasx.cli_output import generated, warning
-from excel_to_aasx.io_utils import load_json, write_json
+from excel_to_aasx.utils.cli_output import generated, warning
+from excel_to_aasx.utils.io_utils import load_json, write_json
 
 SUPPORTED_KEY_TYPES = {
     "AnnotatedRelationshipElement",

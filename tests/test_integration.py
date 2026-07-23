@@ -131,7 +131,7 @@ def test_full_pipeline_extract_to_validation(
     minimal_xlsx: Path, tmp_path: Path
 ) -> None:
     """Full extract → transform → validate using the Schunk config and real templates."""
-    from excel_to_aasx.company_config import load_company_config
+    from excel_to_aasx.core.company_config import load_company_config
     from excel_to_aasx.transform import build_workbook
     from excel_to_aasx.validate import validate_workbook
 

@@ -1,6 +1,6 @@
 import json
 
-from excel_to_aasx.company_config import load_company_config
+from excel_to_aasx.core.company_config import load_company_config
 
 
 def test_load_company_config_merges_format_parent(tmp_path) -> None:

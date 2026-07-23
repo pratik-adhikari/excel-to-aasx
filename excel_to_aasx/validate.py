@@ -3,16 +3,13 @@
 from __future__ import annotations
 
 import argparse
-import datetime
-import json
 import re
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
-from excel_to_aasx.company_config import load_company_config, reference_files
-from excel_to_aasx.cli_output import generated, warning
-from excel_to_aasx.io_utils import load_json, write_json
+from excel_to_aasx.core.company_config import load_company_config, reference_files
+from excel_to_aasx.utils.cli_output import warning
+from excel_to_aasx.utils.io_utils import load_json, write_json
 
 
 DEFAULT_AAS_CORE_SCHEMA = Path(
@@ -146,29 +143,26 @@ def has_value(element: dict[str, Any]) -> bool:
 
 
 def validate_value(value: Any, value_type: str) -> str | None:
+    """Validate an XSD value with the canonical aas-core lexical checks."""
     if value is None or value == "":
         return None
-    text = str(value)
+
+    # Keep the project-level validator independent from the optional report
+    # wrapper below, but use aas-core3.0 as the single source of truth for XSD
+    # lexical rules. Unknown/custom value types remain the responsibility of
+    # the surrounding template validator.
     try:
-        if value_type in {"xs:decimal", "xs:double", "xs:float"}:
-            float(text)
-        elif value_type in {"xs:integer", "xs:int", "xs:long"}:
-            int(text)
-        elif value_type == "xs:boolean":
-            if text.lower() not in {"true", "false"}:
-                return f"expected boolean, got {text!r}"
-        elif value_type == "xs:date":
-            datetime.date.fromisoformat(text)
-        elif value_type == "xs:dateTime":
-            # ISO 8601 permits `Z` for UTC; normalize it for Python versions
-            # whose fromisoformat implementation only accepts `+00:00`.
-            datetime.datetime.fromisoformat(text.replace("Z", "+00:00").replace("z", "+00:00"))
-        elif value_type == "xs:anyURI":
-            parsed = urlparse(text)
-            if not parsed.scheme:
-                return f"expected URI with scheme, got {text!r}"
-    except ValueError as exc:
-        return f"invalid {value_type}: {exc}"
+        from aas_core3 import types as aas_types
+        from aas_core3.verification import value_consistent_with_xsd_type
+    except ImportError as exc:
+        return f"aas-core3.0 unavailable: {exc}"
+
+    try:
+        aas_type = aas_types.DataTypeDefXSD(value_type)
+    except ValueError:
+        return None
+    if not value_consistent_with_xsd_type(str(value), aas_type):
+        return f"invalid {value_type}: value is not consistent with aas-core3.0"
     return None
 
 
