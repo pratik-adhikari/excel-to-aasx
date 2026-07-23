@@ -15,7 +15,7 @@ flowchart TD
     D --> G[Template-shaped AAS environment JSON]
     D --> H[Mapping report]
     G --> I[Step 3: Validation]
-    J[aas-core schema and Python SDK] --> I
+    J[vendored aas-core schema and Python SDK] --> I
     F --> I
     I --> K[Validation report]
     K --> L{Errors?}
@@ -62,7 +62,7 @@ Company configs use `extends` to inherit the repeated format mapping:
 
 ```json
 {
-  "extends": "../formats/idta-schunk-workbook.json",
+  "extends": "../formats/idta-workbook.json",
   "company": "schunk",
   "inputDir": "data/input/schunk",
   "outputRoot": "data/generated/schunk",
@@ -96,7 +96,7 @@ the AAS standard alone:
 {
   "generationPolicy": {
     "emptyActualValue": "skip",
-    "mandatoryMissingValue": "dummy",
+    "mandatoryMissingValue": "error",
     "optionalEmptyTemplateBranches": "prune",
     "reviewFiles": "always",
     "logLevel": "normal"

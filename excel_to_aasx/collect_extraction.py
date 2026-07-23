@@ -9,17 +9,10 @@ from pathlib import Path
 from typing import Any
 
 from excel_to_aasx.company_config import load_company_config
-from excel_to_aasx.logging import generated
+from excel_to_aasx.cli_output import generated
+from excel_to_aasx.io_utils import write_json
 
 
-def load_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    generated(path)
 
 
 def copy_workbook_extraction(source: Path, target: Path) -> list[str]:

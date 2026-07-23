@@ -1,13 +1,16 @@
+import pytest
+
 from excel_to_aasx.validate import validate_aas_core_python
 
-
 def test_aas_core_python_accepts_minimal_environment() -> None:
+    pytest.importorskip("aas_core3")
     result = validate_aas_core_python({})
 
     assert result["issueCounts"] == {"error": 0, "warning": 0, "info": 0}
 
 
 def test_aas_core_python_reports_duplicate_languages() -> None:
+    pytest.importorskip("aas_core3")
     environment = {
         "conceptDescriptions": [
             {

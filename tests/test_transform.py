@@ -258,7 +258,10 @@ def test_add_mandatory_dummy_values_marks_missing_leaf() -> None:
         ],
     }
 
-    records = add_mandatory_dummy_values(submodel)
+    records = add_mandatory_dummy_values(
+        submodel,
+        policy=generation_policy({"generationPolicy": {"mandatoryMissingValue": "dummy"}}),
+    )
 
     assert records == [
         {
@@ -381,7 +384,7 @@ def test_write_step2_review_files_splits_mapping_report_for_review(tmp_path) -> 
     matched = json.loads((review_dir / "matched-rows.json").read_text())
 
     assert unmapped["count"] == 1
-    assert unmapped["generationPolicy"]["mandatoryMissingValue"] == "dummy"
+    assert unmapped["generationPolicy"]["mandatoryMissingValue"] == "error"
     assert unmapped["rows"][0]["idShort"] == "LateUnmatched"
     assert preclassified_unmapped["rows"][0]["idShort"] == "Unknown"
     assert scaffold["rows"] == [{"row": 10, "classification": "template_scaffold"}]

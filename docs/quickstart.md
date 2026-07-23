@@ -11,12 +11,6 @@ python3 -m venv .venv
 pip install -e .[dev]
 ```
 
-Initialize reference submodules:
-
-```bash
-git submodule update --init --recursive
-```
-
 This setup does not extract Excel data and does not generate AASX output. It
 only prepares the local Python environment.
 
@@ -37,7 +31,7 @@ configs/companies/schunk.json
 Reusable worksheet mappings are inherited from:
 
 ```text
-configs/formats/idta-schunk-workbook.json
+configs/formats/idta-workbook.json
 ```
 
 For one exact workbook, copy the company config and reduce only the `workbooks`
@@ -51,7 +45,7 @@ Then edit:
 
 ```json
 {
-  "extends": "../formats/idta-schunk-workbook.json",
+  "extends": "../formats/idta-workbook.json",
   "company": "schunk-single",
   "inputDir": "data/input/schunk",
   "outputRoot": "data/generated/schunk-single",
