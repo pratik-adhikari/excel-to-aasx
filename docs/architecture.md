@@ -62,7 +62,7 @@ Company configs use `extends` to inherit the repeated format mapping:
 
 ```json
 {
-  "extends": "../formats/idta-schunk-workbook.json",
+  "extends": "../formats/idta-workbook.json",
   "company": "schunk",
   "inputDir": "data/input/schunk",
   "outputRoot": "data/generated/schunk",
@@ -96,7 +96,7 @@ the AAS standard alone:
 {
   "generationPolicy": {
     "emptyActualValue": "skip",
-    "mandatoryMissingValue": "dummy",
+    "mandatoryMissingValue": "error",
     "optionalEmptyTemplateBranches": "prune",
     "reviewFiles": "always",
     "logLevel": "normal"

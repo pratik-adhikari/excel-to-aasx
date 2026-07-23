@@ -7,24 +7,51 @@ import copy
 import datetime
 import json
 import re
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlsplit, urlunsplit
 
-from excel_to_aasx.company_config import DEFAULT_COMPANY_CONFIG, load_company_config, sheet_templates
-from excel_to_aasx.logging import classified, generated, warning
+from excel_to_aasx.company_config import load_company_config, sheet_templates
+from excel_to_aasx.cli_output import classified, generated, warning
+from excel_to_aasx.io_utils import load_json, write_json
+from excel_to_aasx.models import Candidate, InputRow, RowClassification, TemplateEntry
+# Re-export these helpers from their focused modules for callers that imported
+# them from transform before the implementation was split.
+from excel_to_aasx.value_normalise import (  # noqa: F401
+    infer_value_type,
+    normalize_value,
+    normalize_uri_value,
+    normalize_date,
+    normalize_datetime,
+    infer_content_type,
+    dummy_value_for,
+    normalize_instance_payload,
+    deduplicate_language_strings,
+    remove_template_qualifiers,
+    deduplicate_child_idshorts,
+    remove_empty_idshorts,
+)
+from excel_to_aasx.matching import (  # noqa: F401
+    score,
+    best_candidate,
+    candidate_elements,
+    MIN_ACCEPTANCE_SCORE,
+    AMBIGUITY_WINDOW,
+)
 
 PLACEHOLDER_VALUES = {"", "#", "-", "n/a", "N/A", "not specified", "Not specified"}
 OPTIONAL_CARDINALITIES = {"ZeroToOne", "ZeroToMany"}
 DEFAULT_GENERATION_POLICY = {
     "emptyActualValue": "skip",
-    "mandatoryMissingValue": "dummy",
+    "mandatoryMissingValue": "error",
     "optionalEmptyTemplateBranches": "prune",
     "reviewFiles": "always",
     "logLevel": "normal",
 }
 GENERIC_ARBITRARY_SEMANTIC = "https://admin-shell.io/SMT/General/Arbitrary"
+# Matches this close are retained but logged for human review because the
+# scoring model cannot distinguish them reliably.
+AMBIGUITY_WINDOW = 8
 TECHNICAL_ARBITRARY_PLACEHOLDERS = {
     "Section",
     "ArbitrarySMC",
@@ -40,47 +67,6 @@ LANGUAGE_STRING_FIELDS = {
     "shortName",
     "definition",
 }
-
-
-@dataclass(frozen=True)
-class InputRow:
-    sheet: str
-    row: int
-    id_short: str
-    field_type: str
-    semantic_id: str
-    actual_value: str
-    section_path: tuple[str, ...]
-
-
-@dataclass
-class Candidate:
-    element: dict[str, Any]
-    path: str
-    id_short: str
-    semantic_id: str
-    model_type: str
-    value_type: str
-
-
-@dataclass(frozen=True)
-class TemplateEntry:
-    path: str
-    id_short: str
-    semantic_id: str
-    model_type: str
-    value_type: str
-    cardinality: str
-    is_arbitrary_placeholder: bool
-
-
-@dataclass(frozen=True)
-class RowClassification:
-    row: InputRow
-    classification: str
-    reason: str
-    template_path: str
-    final_path: str
 
 
 def text(value: Any) -> str:
@@ -138,7 +124,13 @@ def template_index(
     element: dict[str, Any],
     parent_path: str = "",
     parent_model_type: str = "",
+    _depth: int = 0,
 ) -> list[TemplateEntry]:
+    # Templates are external input; bound traversal to avoid pathological
+    # nesting exhausting the Python call stack.
+    if _depth > 64:
+        warning(f"template_index: max depth exceeded at {parent_path!r} — skipping subtree")
+        return []
     path_part = template_path_name(element, parent_model_type)
     path = f"{parent_path}/{path_part}" if parent_path else path_part
     id_short = text(element.get("idShort"))
@@ -159,18 +151,11 @@ def template_index(
         )
     ]
     for child in children(element):
-        entries.extend(template_index(child, path, model_type))
+        entries.extend(template_index(child, path, model_type, _depth + 1))
     return entries
 
 
-def load_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
 
-
-def write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    generated(path)
 
 
 def load_rows(sheet_json: dict[str, Any]) -> list[InputRow]:
@@ -391,7 +376,15 @@ def normalize_instance_payload(payload: Any, parent_model_type: str = "") -> Non
             normalize_instance_payload(item, parent_model_type)
 
 
-def candidate_elements(element: dict[str, Any], parent_path: str = "") -> list[Candidate]:
+def candidate_elements(
+    element: dict[str, Any],
+    parent_path: str = "",
+    _depth: int = 0,
+) -> list[Candidate]:
+    # Keep recursive traversal bounded even if a malformed template is supplied.
+    if _depth > 64:
+        warning(f"candidate_elements: max depth exceeded at {parent_path!r}")
+        return []
     id_short = text(element.get("idShort"))
     path = f"{parent_path}/{id_short or '[]'}" if parent_path else id_short or "[]"
     result: list[Candidate] = []
@@ -427,7 +420,7 @@ def candidate_elements(element: dict[str, Any], parent_path: str = "") -> list[C
                 )
 
     for child in children(element):
-        result.extend(candidate_elements(child, path))
+        result.extend(candidate_elements(child, path, _depth + 1))
     return result
 
 
@@ -474,15 +467,33 @@ def best_candidate(
 ) -> tuple[Candidate | None, int]:
     best: Candidate | None = None
     best_score = 0
+    runner_up_score = 0
     for candidate in candidates:
         if candidate.path in used_paths:
             continue
         candidate_score = score(row, candidate)
         if candidate_score > best_score:
+            runner_up_score = best_score
             best = candidate
             best_score = candidate_score
-    if best_score < 20:
+        elif candidate_score > runner_up_score:
+            runner_up_score = candidate_score
+        elif candidate_score == best_score and best is not None:
+            # Prefer the shallowest path when scores are equal because it is the
+            # least specific interpretation and therefore the least surprising.
+            if len(candidate.path) < len(best.path):
+                runner_up_score = best_score
+                best = candidate
+    # Reject weak matches rather than generating plausible-looking wrong data.
+    if best_score < 40:
         return None, best_score
+    # Preserve the match but make ambiguity visible in the stage log.
+    if best is not None and best_score - runner_up_score <= AMBIGUITY_WINDOW:
+        classified(
+            f"AMBIGUOUS match: row={row.id_short!r} "
+            f"best_score={best_score} runner_up={runner_up_score} "
+            f"→ {best.path!r}"
+        )
     return best, best_score
 
 
@@ -533,7 +544,15 @@ def infer_value_type(field_type: str) -> str:
 
 def normalize_value(value: str, value_type: str) -> str:
     if value_type == "xs:boolean":
-        return value.lower()
+        # Excel exports commonly use localized boolean spellings; normalize the
+        # known forms while leaving unknown values visible for validation.
+        normalised = value.strip().lower()
+        if normalised in {"true", "1", "yes", "ja", "wahr"}:
+            return "true"
+        if normalised in {"false", "0", "no", "nein", "falsch"}:
+            return "false"
+        warning(f"invalid xs:boolean value {value!r} — keeping as-is (will fail AAS Core validation)")
+        return normalised
     if value_type == "xs:date":
         return normalize_date(value)
     if value_type == "xs:dateTime":
@@ -576,18 +595,31 @@ def normalize_date(value: str) -> str:
 def normalize_datetime(value: str) -> str:
     if re.fullmatch(r"\d+(\.0)?", value):
         return f"{normalize_date(value)}T00:00:00"
+    # `Z` is the ISO 8601 spelling for UTC. Canonicalize it to the explicit
+    # offset accepted by the validator and older Python runtimes.
+    if value.endswith(("Z", "z")):
+        return f"{value[:-1]}+00:00"
     return value
 
 
 def infer_content_type(value: str) -> str:
-    lowered = value.lower()
-    if lowered.endswith(".pdf"):
-        return "application/pdf"
-    if ".png" in lowered:
-        return "image/png"
-    if ".jpg" in lowered or ".jpeg" in lowered:
-        return "image/jpeg"
-    if ".webp" in lowered or "fwebp" in lowered:
+    # Inspect the URL path suffix so a query string or directory name cannot
+    # incorrectly determine the MIME type.
+    from pathlib import PurePosixPath
+    from urllib.parse import urlsplit
+    path_part = urlsplit(value).path or value
+    suffix = PurePosixPath(path_part).suffix.lower()
+    content_type = {
+        ".pdf":  "application/pdf",
+        ".png":  "image/png",
+        ".jpg":  "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+    }.get(suffix)
+    if content_type:
+        return content_type
+    # Schunk-specific: URLs containing FWEBP or fwebp token (no file extension)
+    if "fwebp" in value.lower():
         return "image/webp"
     return "application/octet-stream"
 
@@ -1146,6 +1178,7 @@ def fill_handover_documents(
     submodel: dict[str, Any],
     rows: list[InputRow],
     policy: dict[str, str],
+    sentinel: str = "DocumentDomainId",
 ) -> tuple[list[dict[str, Any]], list[InputRow]]:
     documents = find_element_by_idshort(submodel, "Documents")
     if documents is None:
@@ -1154,7 +1187,7 @@ def fill_handover_documents(
     if not template_items:
         return fill_standard_matches(submodel, rows, policy)
 
-    groups = group_handover_rows(rows)
+    groups = group_handover_rows(rows, sentinel=sentinel)
     if not groups:
         return [], []
 
@@ -1183,13 +1216,24 @@ def fill_handover_documents(
     return matched, unmatched
 
 
-def group_handover_rows(rows: list[InputRow]) -> list[list[InputRow]]:
+def group_handover_rows(
+    rows: list[InputRow],
+    sentinel: str = "DocumentDomainId",
+) -> list[list[InputRow]]:
+    # A new sentinel begins a document group. Continue immediately so the
+    # sentinel is appended once rather than falling through to generic handling.
     groups: list[list[InputRow]] = []
     current: list[InputRow] = []
     for row in rows:
-        if row.id_short == "DocumentDomainId" and current:
-            groups.append(current)
-            current = []
+        if row.id_short == sentinel:
+            if current:
+                groups.append(current)
+            # Ignore structural rows before the first sentinel. Some workbooks
+            # put a URL on the Documents list itself; it is not a document.
+            current = [row] if meaningful_row(row) else []
+            continue
+        if not current:
+            continue
         if meaningful_row(row):
             current.append(row)
     if current:
@@ -1197,11 +1241,18 @@ def group_handover_rows(rows: list[InputRow]) -> list[list[InputRow]]:
     return groups
 
 
-def find_element_by_idshort(element: dict[str, Any], id_short: str) -> dict[str, Any] | None:
+def find_element_by_idshort(
+    element: dict[str, Any],
+    id_short: str,
+    _depth: int = 0,
+) -> dict[str, Any] | None:
+    # Limit recursion for malformed or unexpectedly deep external templates.
+    if _depth > 64:
+        return None
     if element.get("idShort") == id_short:
         return element
     for child in children(element):
-        found = find_element_by_idshort(child, id_short)
+        found = find_element_by_idshort(child, id_short, _depth + 1)
         if found is not None:
             return found
     return None
@@ -1360,7 +1411,8 @@ def build_workbook(
         rows = sheet_rows[sheet_name]
         classifications = classify_rows(rows, reference_entries)
         if submodel_id_short == "HandoverDocumentation":
-            matched, unmatched = fill_handover_documents(submodel, rows, policy)
+            sentinel = config.get("handoverDocumentation", {}).get("groupStartIdShort", "DocumentDomainId")
+            matched, unmatched = fill_handover_documents(submodel, rows, policy, sentinel=sentinel)
         else:
             matched, unmatched = fill_standard_matches(submodel, rows, policy)
         inserted: list[dict[str, Any]] = []
@@ -1512,7 +1564,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input-dir", type=Path, required=True)
     parser.add_argument("--reference-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--company-config", type=Path, default=DEFAULT_COMPANY_CONFIG)
+    parser.add_argument("--company-config", type=Path, required=True, help="Path to configs/companies/<company>.json")
     return parser.parse_args()
 
 
@@ -1520,11 +1572,28 @@ def main() -> None:
     args = parse_args()
     config = load_company_config(args.company_config)
     summaries = []
+    failed = []
     for workbook_dir in sorted(args.input_dir.iterdir()):
-        if not workbook_dir.is_dir() or workbook_dir.name == "reference":
+        if not workbook_dir.is_dir():
             continue
-        summaries.append(build_workbook(workbook_dir, args.reference_dir, args.output_dir, config))
-    write_json(args.output_dir / "summary.json", {"workbooks": summaries})
+        try:
+            summaries.append(
+                build_workbook(
+                    workbook_dir,
+                    args.reference_dir,
+                    args.output_dir,
+                    config,
+                )
+            )
+        except Exception as exc:  # Report this workbook while preserving other results.
+            warning(f"FAILED {workbook_dir.name}: {exc}")
+            failed.append({"workbook": workbook_dir.name, "error": str(exc)})
+
+    # Write partial summary before raising so successful runs are recorded
+    write_json(args.output_dir / "summary.json", {"workbooks": summaries, "failures": failed})
+
+    if failed:
+        raise SystemExit(f"{len(failed)} workbook(s) failed during transform")
 
 
 if __name__ == "__main__":

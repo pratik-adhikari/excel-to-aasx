@@ -12,7 +12,8 @@ from typing import Any
 from urllib.parse import urlsplit
 from urllib.parse import quote, unquote
 
-from excel_to_aasx.logging import generated, warning
+from excel_to_aasx.cli_output import generated, warning
+from excel_to_aasx.io_utils import load_json, write_json
 
 SUPPORTED_KEY_TYPES = {
     "AnnotatedRelationshipElement",
@@ -42,15 +43,6 @@ SUPPORTED_KEY_TYPES = {
 }
 BASYX_KEY_TYPES = SUPPORTED_KEY_TYPES - {"Identifiable", "Referable"}
 
-
-def load_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    generated(path)
 
 
 def shell_id(environment: dict[str, Any]) -> str:
@@ -122,12 +114,18 @@ def is_external_file_reference(value: str) -> bool:
 
 
 def aasx_package_path(value: str) -> str:
-    if value.startswith("/") and len([part for part in value.split("/") if part]) > 1:
+    # Only canonical AASX package paths should bypass normalization; ordinary
+    # local paths still need conversion to package-relative references.
+    if value.startswith("/aasx/"):
         return value
-    normalized = unquote(value).lstrip("/").strip().strip(".")
+    normalized = unquote(value).lstrip("/").strip()
     if not normalized:
         normalized = "missing-file"
-    return "/aasx/files/" + quote(normalized, safe="._-")
+    # strip trailing dots from the filename component only (not mid-path dots)
+    parts = normalized.rsplit("/", 1)
+    parts[-1] = parts[-1].rstrip(".")
+    normalized = "/".join(parts) or "missing-file"
+    return "/aasx/files/" + quote(normalized, safe="._-/")
 
 
 def placeholder_bytes(name: str, content_type: str) -> bytes:
@@ -144,14 +142,26 @@ def placeholder_bytes(name: str, content_type: str) -> bytes:
     return f"Dummy supplementary file generated for missing reference: {name}\n".encode("utf-8")
 
 
-def collect_missing_supplementary_files(payload: Any) -> list[dict[str, str]]:
+def _collect_file_refs(payload: Any) -> list[dict[str, str]]:
+    """Read-only traversal — collect all File element references."""
     records: list[dict[str, str]] = []
     if isinstance(payload, dict):
+        thumbnail = payload.get("defaultThumbnail")
+        if isinstance(thumbnail, dict):
+            value = str(thumbnail.get("path") or "").strip()
+            if value and not is_external_file_reference(value):
+                records.append(
+                    {
+                        "path": aasx_package_path(value),
+                        "originalPath": value,
+                        "contentType": str(thumbnail.get("contentType") or "image/png"),
+                        "reason": "Default thumbnail is local/relative but no source file is available; placeholder added to AASX.",
+                    }
+                )
         if payload.get("modelType") == "File":
             value = str(payload.get("value") or "").strip()
             if value and not is_external_file_reference(value):
                 package_path = aasx_package_path(value)
-                payload["value"] = package_path
                 records.append(
                     {
                         "path": package_path,
@@ -161,14 +171,43 @@ def collect_missing_supplementary_files(payload: Any) -> list[dict[str, str]]:
                     }
                 )
         for value in payload.values():
-            records.extend(collect_missing_supplementary_files(value))
+            records.extend(_collect_file_refs(value))
     elif isinstance(payload, list):
         for item in payload:
-            records.extend(collect_missing_supplementary_files(item))
+            records.extend(_collect_file_refs(item))
+    return records
+
+
+def _rewrite_file_paths(payload: Any, path_map: dict[str, str]) -> None:
+    """Second pass — rewrite File element values to canonical AASX paths."""
+    if isinstance(payload, dict):
+        thumbnail = payload.get("defaultThumbnail")
+        if isinstance(thumbnail, dict):
+            value = str(thumbnail.get("path") or "").strip()
+            if value and not is_external_file_reference(value):
+                thumbnail["path"] = path_map.get(aasx_package_path(value), aasx_package_path(value))
+        if payload.get("modelType") == "File":
+            value = str(payload.get("value") or "").strip()
+            if value and not is_external_file_reference(value):
+                payload["value"] = path_map.get(aasx_package_path(value), aasx_package_path(value))
+        for value in payload.values():
+            _rewrite_file_paths(value, path_map)
+    elif isinstance(payload, list):
+        for item in payload:
+            _rewrite_file_paths(item, path_map)
+
+
+def collect_missing_supplementary_files(payload: Any) -> list[dict[str, str]]:
+    # Collect first and rewrite second so traversal is not invalidated by the
+    # supplementary files added during packaging.
+    raw = _collect_file_refs(payload)
     deduplicated: dict[str, dict[str, str]] = {}
-    for record in records:
+    for record in raw:
         deduplicated.setdefault(record["path"], record)
-    return list(deduplicated.values())
+    unique = list(deduplicated.values())
+    path_map = {r["path"]: r["path"] for r in unique}
+    _rewrite_file_paths(payload, path_map)
+    return unique
 
 
 def build_file_store(missing_files: list[dict[str, str]]) -> Any:
@@ -271,35 +310,50 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input-dir", type=Path, required=True)
     parser.add_argument("--validation-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--strict", action="store_true",
+                        help="Also block packaging when validation warnings are present")
     return parser.parse_args()
 
 
-def assert_validated(workbook_dir: Path, validation_dir: Path) -> None:
+def assert_validated(workbook_dir: Path, validation_dir: Path, strict: bool = False) -> None:
+    # Warnings are useful for review but do not make a package unusable unless
+    # the caller explicitly requests strict validation.
     report_path = validation_dir / workbook_dir.name / "validation-report.json"
     report = load_json(report_path)
     errors = report.get("issueCounts", {}).get("error", 0)
-    warnings = report.get("issueCounts", {}).get("warning", 0)
-    if errors or warnings:
+    warn_count = report.get("issueCounts", {}).get("warning", 0)  # not "warnings" — avoid stdlib shadow
+    if errors or (strict and warn_count):
         raise RuntimeError(
             f"{workbook_dir.name} is not cleanly validated: "
-            f"{errors} errors, {warnings} warnings"
+            f"{errors} errors, {warn_count} warnings"
         )
 
 
 def main() -> None:
     args = parse_args()
     summaries = []
+    failed = []
     for workbook_dir in sorted(args.input_dir.iterdir()):
         if not workbook_dir.is_dir():
             continue
-        assert_validated(workbook_dir, args.validation_dir)
-        summaries.append(package_workbook(workbook_dir, args.output_dir))
-    published_aasx = publish_aasx_collection(args.output_dir, summaries)
+        try:
+            assert_validated(workbook_dir, args.validation_dir, strict=getattr(args, "strict", False))
+            summaries.append(package_workbook(workbook_dir, args.output_dir))
+        except Exception as exc:  # Report this workbook while preserving other results.
+            warning(f"FAILED {workbook_dir.name}: {exc}")
+            failed.append({"workbook": workbook_dir.name, "error": str(exc)})
+
+    # Write whatever succeeded before raising
+    published_aasx = publish_aasx_collection(args.output_dir, summaries) if summaries else []
     write_json(
         args.output_dir / "summary.json",
-        {"workbooks": summaries, "publishedAasx": published_aasx},
+        {"workbooks": summaries, "publishedAasx": published_aasx, "failures": failed},
     )
-    write_json(args.output_dir.parent / "aasx" / "summary.json", {"aasx": published_aasx})
+    if published_aasx:
+        write_json(args.output_dir.parent / "aasx" / "summary.json", {"aasx": published_aasx})
+
+    if failed:
+        raise SystemExit(f"{len(failed)} workbook(s) failed during packaging")
 
 
 if __name__ == "__main__":

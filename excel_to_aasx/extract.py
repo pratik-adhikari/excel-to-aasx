@@ -13,8 +13,9 @@ from openpyxl import load_workbook
 from openpyxl.cell.cell import Cell, MergedCell
 from openpyxl.utils import get_column_letter
 
-from excel_to_aasx.company_config import DEFAULT_COMPANY_CONFIG, load_company_config
-from excel_to_aasx.logging import generated
+from excel_to_aasx.company_config import load_company_config
+from excel_to_aasx.cli_output import generated, warning
+from excel_to_aasx.io_utils import write_json
 
 
 def text_or_empty(value: Any) -> str:
@@ -159,7 +160,7 @@ def row_attributes(row_dimension: Any, row_number: int) -> dict[str, Any]:
     return attributes
 
 
-def read_complete_sheet(sheet: Any) -> dict[str, Any]:
+def read_complete_sheet(sheet: Any, formula_sheet: Any | None = None) -> dict[str, Any]:
     dimension = sheet.calculate_dimension()
     max_row = sheet.max_row or 0
     max_col = sheet.max_column or 0
@@ -171,14 +172,26 @@ def read_complete_sheet(sheet: Any) -> dict[str, Any]:
         row_cells = []
         for col_number in range(1, max_col + 1):
             cell = sheet.cell(row=row_number, column=col_number)
+            formula_cell = formula_sheet.cell(row=row_number, column=col_number) if formula_sheet else None
             if (
                 cell.value is None
                 and not getattr(cell, "has_style", False)
                 and not getattr(cell, "hyperlink", None)
                 and not getattr(cell, "comment", None)
+                and not (formula_cell is not None and formula_cell.data_type == "f")
             ):
                 continue
             item = cell_object(cell)
+            # data_only=True hides the formula, so inspect the parallel formula
+            # workbook to detect missing cached results without losing them from
+            # the complete extraction.
+            if formula_cell is not None and formula_cell.data_type == "f":
+                item["formula"] = str(formula_cell.value or "").removeprefix("=")
+                if cell.value is None:
+                    warning(
+                        f"formula not pre-computed: {sheet.title}!{cell.coordinate} "
+                        f"formula={formula_cell.value!r} — treated as empty"
+                    )
             values[item["columnIndex"]] = item["value"]
             row_cells.append(item)
             all_cells.append(item)
@@ -243,10 +256,17 @@ def row_to_object(
 
 
 def extract_workbook(path: Path) -> dict[str, Any]:
-    workbook = load_workbook(path, data_only=False, read_only=False, rich_text=False)
+    # data_only=True reads the last computed value for formula cells.
+    # If the workbook was never saved with Excel/LibreOffice, formula cells
+    # will return None; a warning is emitted per-cell in read_complete_sheet.
+    formula_workbook = load_workbook(path, data_only=False, read_only=False, rich_text=False)
+    workbook = load_workbook(path, data_only=True, read_only=False, rich_text=False)
     sheets = {}
     for sheet in workbook.worksheets:
-        complete_sheet = read_complete_sheet(sheet)
+        complete_sheet = read_complete_sheet(
+            sheet,
+            formula_sheet=formula_workbook[sheet.title],
+        )
         rows = [
             {"row": item["row"], "values": item["values"]}
             for item in complete_sheet["completeRows"]
@@ -271,24 +291,11 @@ def write_workbook_outputs(workbook: dict[str, Any], output_dir: Path) -> None:
     workbook_dir.mkdir(parents=True, exist_ok=True)
 
     workbook_path = workbook_dir / "workbook.json"
-    workbook_path.write_text(json.dumps(workbook, indent=2) + "\n", encoding="utf-8")
-    generated(workbook_path)
+    write_json(workbook_path, workbook)
 
     for sheet_name, sheet in workbook["sheets"].items():
         sheet_path = workbook_dir / f"{slug(sheet_name)}.json"
-        sheet_path.write_text(
-            json.dumps(
-                {
-                    "source": workbook["source"],
-                    "workbook": workbook["workbook"],
-                    **sheet,
-                },
-                indent=2,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-        generated(sheet_path)
+        write_json(sheet_path, {"source": workbook["source"], "workbook": workbook["workbook"], **sheet})
 
 
 def parse_args() -> argparse.Namespace:
@@ -301,7 +308,7 @@ def parse_args() -> argparse.Namespace:
         dest="files",
         help="Workbook file name relative to --input-dir. Defaults to configured workbooks.",
     )
-    parser.add_argument("--company-config", type=Path, default=DEFAULT_COMPANY_CONFIG)
+    parser.add_argument("--company-config", type=Path, required=True, help="Path to configs/companies/<company>.json")
     return parser.parse_args()
 
 

@@ -10,8 +10,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from excel_to_aasx.company_config import DEFAULT_COMPANY_CONFIG, load_company_config, reference_files
-from excel_to_aasx.logging import generated, warning
+from excel_to_aasx.company_config import load_company_config, reference_files
+from excel_to_aasx.cli_output import generated, warning
+from excel_to_aasx.io_utils import load_json, write_json
 
 
 DEFAULT_AAS_CORE_SCHEMA = Path(
@@ -28,7 +29,9 @@ FORBIDDEN_KEYS = {
     "rawRows",
     "completeExtraction",
 }
-ALLOWED_EXPANSIONS = {
+# Keep conservative defaults for direct library callers; configured pipelines
+# can explicitly declare the additional structure their templates permit.
+_DEFAULT_ALLOWED_EXPANSIONS: dict[str, set[str]] = {
     "Nameplate": {
         "AddressInformation/Street",
         "AddressInformation/Zipcode",
@@ -36,21 +39,18 @@ ALLOWED_EXPANSIONS = {
         "AddressInformation/NationalCode",
     },
 }
-TECHNICAL_ARBITRARY_PREFIX = "TechnicalPropertyAreas/[]/Section/"
+_DEFAULT_ARBITRARY_PREFIXES: dict[str, str] = {
+    "TechnicalData": "TechnicalPropertyAreas/[]/Section/",
+}
 GENERIC_ARBITRARY_SEMANTIC = "https://admin-shell.io/SMT/General/Arbitrary"
 
 
-def load_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
 
 
-def write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    generated(path)
-
-
-def children(element: dict[str, Any]) -> list[dict[str, Any]]:
+def children(
+    element: dict[str, Any],
+    _depth: int = 0,
+) -> list[dict[str, Any]]:
     value = element.get("value")
     if isinstance(value, list):
         return [
@@ -89,11 +89,16 @@ def collect_elements(
     element: dict[str, Any],
     parent: str = "",
     parent_model_type: str = "",
+    _depth: int = 0,
 ) -> list[tuple[str, dict[str, Any]]]:
+    # References are external input; bound traversal to avoid stack exhaustion.
+    if _depth > 64:
+        warning(f"collect_elements: max depth exceeded at {parent!r}")
+        return []
     path = element_path(element, parent, parent_model_type)
     result = [(path, element)]
     for child in children(element):
-        result.extend(collect_elements(child, path, str(element.get("modelType", ""))))
+        result.extend(collect_elements(child, path, str(element.get("modelType", "")), _depth + 1))
     return result
 
 
@@ -155,7 +160,9 @@ def validate_value(value: Any, value_type: str) -> str | None:
         elif value_type == "xs:date":
             datetime.date.fromisoformat(text)
         elif value_type == "xs:dateTime":
-            datetime.datetime.fromisoformat(text)
+            # ISO 8601 permits `Z` for UTC; normalize it for Python versions
+            # whose fromisoformat implementation only accepts `+00:00`.
+            datetime.datetime.fromisoformat(text.replace("Z", "+00:00").replace("z", "+00:00"))
         elif value_type == "xs:anyURI":
             parsed = urlparse(text)
             if not parsed.scheme:
@@ -350,6 +357,8 @@ def validate_aas_core_python(
 def validate_submodel(
     generated: dict[str, Any],
     reference: dict[str, Any],
+    allowed_expansions: dict[str, set[str]] | None = None,
+    allowed_arbitrary_prefixes: dict[str, str] | None = None,
 ) -> list[dict[str, str]]:
     issues: list[dict[str, str]] = []
     id_short = generated.get("idShort", "")
@@ -389,7 +398,9 @@ def validate_submodel(
             duplicate_base_path is not None and duplicate_base_path in known_reference_paths
         )
         if not known_normalized_path and not allowed_expansion(
-            id_short, normalized_path, element
+            id_short, normalized_path, element,
+            allowed_expansions=allowed_expansions,
+            allowed_arbitrary_prefixes=allowed_arbitrary_prefixes,
         ):
             issues.append(
                 issue(
@@ -434,10 +445,21 @@ def validate_submodel(
     return issues
 
 
-def allowed_expansion(id_short: str, path: str, element: dict[str, Any]) -> bool:
-    if path in ALLOWED_EXPANSIONS.get(id_short, set()):
+def allowed_expansion(
+    id_short: str,
+    path: str,
+    element: dict[str, Any],
+    allowed_expansions: dict[str, set[str]] | None = None,
+    allowed_arbitrary_prefixes: dict[str, str] | None = None,
+) -> bool:
+    # Direct callers retain the historical defaults, while pipeline validation
+    # can use company-specific allowances supplied by configuration.
+    expansions = allowed_expansions if allowed_expansions is not None else _DEFAULT_ALLOWED_EXPANSIONS
+    prefixes = allowed_arbitrary_prefixes if allowed_arbitrary_prefixes is not None else _DEFAULT_ARBITRARY_PREFIXES
+    if path in expansions.get(id_short, set()):
         return True
-    if id_short == "TechnicalData" and path.startswith(TECHNICAL_ARBITRARY_PREFIX):
+    arb_prefix = prefixes.get(id_short)
+    if arb_prefix and path.startswith(arb_prefix):
         return semantic_id(element) == GENERIC_ARBITRARY_SEMANTIC
     return False
 
@@ -478,8 +500,28 @@ def validate_workbook(
     submodels = environment.get("submodels", [])
     if len(shells) != 1:
         report["issues"].append(issue("error", "shell-count", f"expected one shell, got {len(shells)}"))
-    if len(submodels) != 5:
-        report["issues"].append(issue("error", "submodel-count", f"expected five submodels, got {len(submodels)}"))
+
+    # Different companies may configure different sheets, so the expected count
+    # must come from the effective company configuration.
+    ref_files = reference_files(config)
+    expected_count = len(ref_files)
+    if expected_count == 0:
+        report["issues"].append(
+            issue("error", "config-no-sheets",
+                  "company config declares no sheets; submodel count cannot be validated")
+        )
+    elif len(submodels) != expected_count:
+        report["issues"].append(
+            issue("error", "submodel-count",
+                  f"expected {expected_count} submodels (from config), got {len(submodels)}")
+        )
+
+    # Allow documented company-specific additions without weakening the default
+    # reference-template check for other submodels.
+    raw_exp = config.get("allowedExpansions")
+    allowed_expansions = {k: set(v) for k, v in raw_exp.items()} if raw_exp is not None else None
+
+    allowed_arbitrary_prefixes = config.get("allowedArbitraryPrefixes")
 
     submodels_by_id = {item.get("id"): item for item in submodels}
     if shells:
@@ -496,12 +538,16 @@ def validate_workbook(
 
     for submodel in submodels:
         id_short = submodel.get("idShort")
-        reference_file = reference_files(config).get(id_short)
+        reference_file = ref_files.get(id_short)
         if not reference_file:
             sub_issues = [issue("error", "unknown-submodel", f"no reference configured for {id_short}")]
         else:
             reference = load_json(reference_dir / reference_file)["submodels"][0]
-            sub_issues = validate_submodel(submodel, reference)
+            sub_issues = validate_submodel(
+                submodel, reference,
+                allowed_expansions=allowed_expansions,
+                allowed_arbitrary_prefixes=allowed_arbitrary_prefixes,
+            )
         report["submodels"].append(
             {
                 "idShort": id_short,
@@ -537,7 +583,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--aas-core-schema", type=Path, default=DEFAULT_AAS_CORE_SCHEMA)
     parser.add_argument("--skip-aas-core-python", action="store_true")
-    parser.add_argument("--company-config", type=Path, default=DEFAULT_COMPANY_CONFIG)
+    parser.add_argument("--company-config", type=Path, required=True, help="Path to configs/companies/<company>.json")
     return parser.parse_args()
 
 
@@ -545,37 +591,27 @@ def main() -> None:
     args = parse_args()
     config = load_company_config(args.company_config)
     summaries = []
+    failed = []
     for workbook_dir in sorted(args.input_dir.iterdir()):
         if not workbook_dir.is_dir():
             continue
-        summaries.append(
-            validate_workbook(
-                workbook_dir,
-                args.reference_dir,
-                args.output_dir,
-                args.aas_core_schema,
-                not args.skip_aas_core_python,
-                config,
+        try:
+            summaries.append(
+                validate_workbook(
+                    workbook_dir, args.reference_dir, args.output_dir,
+                    args.aas_core_schema, not args.skip_aas_core_python, config,
+                )
             )
-        )
-        counts = summaries[-1]["issueCounts"]
-        message = (
-            f"validated {workbook_dir.name}: "
-            f"errors={counts.get('error', 0)}, "
-            f"warnings={counts.get('warning', 0)}, "
-            f"info={counts.get('info', 0)}"
-        )
-        if counts.get("error", 0) or counts.get("warning", 0):
-            warning(message)
-        else:
-            print(message, flush=True)
-    summary = {"workbooks": summaries}
-    write_json(args.output_dir / "summary.json", summary)
+        except Exception as exc:  # Keep processing other workbooks and report all failures.
+            warning(f"FAILED {workbook_dir.name}: {exc}")
+            failed.append({"workbook": workbook_dir.name, "error": str(exc)})
 
-    error_count = sum(
-        workbook["issueCounts"].get("error", 0)
-        for workbook in summaries
-    )
+    # Write partial summary before raising so successful runs are recorded
+    write_json(args.output_dir / "summary.json", {"workbooks": summaries, "failures": failed})
+
+    if failed:
+        raise SystemExit(f"{len(failed)} workbook(s) failed during validation")
+    error_count = sum(w["issueCounts"].get("error", 0) for w in summaries)
     if error_count:
         raise SystemExit(f"validation failed with {error_count} error(s)")
 

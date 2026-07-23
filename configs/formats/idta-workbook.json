@@ -1,0 +1,85 @@
+{
+  "_comments": {
+    "purpose": "Shared mapping and generation defaults for workbooks based on the IDTA submodel template set.",
+    "inheritance": "Company configurations extend this file and provide company identity, input files, and asset identifiers.",
+    "templates": "Template paths are relative to the configured reference directory and remain pinned to the tested IDTA revisions.",
+    "policy": {
+      "emptyActualValue": {
+        "options": ["skip", "preserve-empty", "dummy"],
+        "meaning": {
+          "skip": "Do not map rows whose actual Excel value is empty.",
+          "preserve-empty": "Map the row and retain an explicitly empty AAS value with missing-value metadata.",
+          "dummy": "Map the row using a type-appropriate dummy value and mark it as generated."
+        }
+      },
+      "mandatoryMissingValue": {
+        "options": ["error", "dummy", "preserve-empty"],
+        "meaning": {
+          "error": "Stop the workbook when a mandatory template value has no usable Excel value.",
+          "dummy": "Generate a type-appropriate dummy value and record that it was generated.",
+          "preserve-empty": "Keep the mandatory AAS value empty and record missing-value metadata."
+        }
+      },
+      "optionalEmptyTemplateBranches": {
+        "options": ["prune", "keep-empty", "dummy"],
+        "meaning": {
+          "prune": "Remove optional template branches that contain no mapped instance data.",
+          "keep-empty": "Keep optional branches and apply the mandatory-value policy to their leaves.",
+          "dummy": "Keep optional branches and generate dummy values for their required leaves."
+        }
+      },
+      "reviewFiles": {
+        "options": ["always", "issues-only", "off"],
+        "meaning": {
+          "always": "Write mapping and review artifacts for every submodel.",
+          "issues-only": "Write review artifacts only when mappings, dummies, or pruning need review.",
+          "off": "Do not write review artifacts."
+        }
+      },
+      "logLevel": {
+        "options": ["quiet", "normal", "detailed"],
+        "meaning": {
+          "quiet": "Emit only essential output.",
+          "normal": "Emit stage and classification summaries.",
+          "detailed": "Also emit unresolved rows, ambiguity information, and mandatory-value records."
+        }
+      }
+    },
+    "review": "Review artifacts and detailed logs are enabled so unresolved or ambiguous mappings remain auditable."
+  },
+  "format": "idta-workbook",
+  "generationPolicy": {
+    "emptyActualValue": "dummy",
+    "mandatoryMissingValue": "dummy",
+    "optionalEmptyTemplateBranches": "dummy",
+    "reviewFiles": "always",
+    "logLevel": "detailed"
+  },
+  "sheets": [
+    {
+      "sheet": "Digital Nameplate",
+      "submodelIdShort": "Nameplate",
+      "template": "published/Digital nameplate/3/0/IDTA 02006-3-0_Template_Digital Nameplate.json"
+    },
+    {
+      "sheet": "Handover Documentation",
+      "submodelIdShort": "HandoverDocumentation",
+      "template": "published/Handover Documentation/2/0/IDTA 02004-2-0_Template_HandoverDocumentation.json"
+    },
+    {
+      "sheet": "Technical Data",
+      "submodelIdShort": "TechnicalData",
+      "template": "published/Technical_Data/2/0/IDTA 02003_Template_TechnicalData.json"
+    },
+    {
+      "sheet": "Carbon Footprint",
+      "submodelIdShort": "CarbonFootprint",
+      "template": "published/Carbon Footprint/1/0/IDTA 02023 _Template_CarbonFootprint.json"
+    },
+    {
+      "sheet": "Maintenance Instructions",
+      "submodelIdShort": "MaintenanceInstructions",
+      "template": "published/Maintenance Instructions/1/0/IDTA_02018_Template_MaintenanceInstructions.json"
+    }
+  ]
+}

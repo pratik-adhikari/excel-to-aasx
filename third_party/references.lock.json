@@ -3,7 +3,7 @@
     "admin-shell-io/submodel-templates": {
       "url": "https://github.com/admin-shell-io/submodel-templates",
       "commit": "b5fe9ae671520b87adc33c67c44ccdab4373c2b1",
-      "path": "third_party/admin-shell-io/submodel-templates",
+      "path": "third_party/admin-shell-io",
       "storage": "vendored"
     },
     "aas-core-codegen": {

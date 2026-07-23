@@ -31,7 +31,7 @@ configs/companies/schunk.json
 Reusable worksheet mappings are inherited from:
 
 ```text
-configs/formats/idta-schunk-workbook.json
+configs/formats/idta-workbook.json
 ```
 
 For one exact workbook, copy the company config and reduce only the `workbooks`
@@ -45,7 +45,7 @@ Then edit:
 
 ```json
 {
-  "extends": "../formats/idta-schunk-workbook.json",
+  "extends": "../formats/idta-workbook.json",
   "company": "schunk-single",
   "inputDir": "data/input/schunk",
   "outputRoot": "data/generated/schunk-single",

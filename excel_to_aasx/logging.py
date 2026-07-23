@@ -1,38 +1,21 @@
-"""Small terminal logging helpers for pipeline output."""
+"""Backward-compatibility shim — do not import this directly.
 
-from __future__ import annotations
-
-import os
-import sys
-from typing import Any
-
-RED = "\033[31m"
-GREEN = "\033[32m"
-CYAN = "\033[36m"
-RESET = "\033[0m"
-
-
-def color(text: str, ansi: str) -> str:
-    if os.environ.get("NO_COLOR"):
-        return text
-    return f"{ansi}{text}{RESET}"
-
-
-def info(message: str, *values: Any) -> None:
-    print(message.format(*values), flush=True)
-
-
-def generated(path: Any) -> None:
-    print(color(f"generated {path}", GREEN), flush=True)
-
-
-def classified(message: str) -> None:
-    print(color(message, CYAN), flush=True)
-
-
-def warning(message: str) -> None:
-    print(color(message, RED), flush=True)
-
-
-def error(message: str) -> None:
-    print(color(message, RED), file=sys.stderr, flush=True)
+All new code should import from excel_to_aasx.cli_output instead.
+This module exists only so any external scripts that do
+  from excel_to_aasx.logging import ...
+continue to work during migration.
+"""
+# Preserve the old import path for downstream scripts while keeping the actual
+# implementation in a module whose name cannot shadow Python's logging module.
+from excel_to_aasx.cli_output import (  # noqa: F401
+    classified,
+    color,
+    error,
+    generated,
+    info,
+    warning,
+    RED,
+    GREEN,
+    CYAN,
+    RESET,
+)

@@ -1,5 +1,5 @@
 {
-  "extends": "../formats/idta-schunk-workbook.json",
+  "extends": "../formats/idta-workbook.json",
   "company": "schunk",
   "displayName": "Schunk",
   "inputDir": "data/input/schunk",

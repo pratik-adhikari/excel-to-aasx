@@ -23,7 +23,7 @@ flowchart LR
 configs/companies/<company>.json
 configs/formats/<format>.json
 data/input/<company>/*.xlsx
-third_party/admin-shell-io/submodel-templates
+third_party/admin-shell-io
 third_party/aas-core-works/aas-core-schema/schema.json
 ```
 
@@ -56,44 +56,14 @@ first generic classifier did not directly place the row. `unresolved_excel_row`
 is the important value: it counts rows still not placed after the full
 transform. Review `unmapped-rows.json` for actual unresolved source data.
 
-## Setup
+## Quickstart
 
-```bash
-python3 -m venv .venv
-. .venv/bin/activate
-pip install -e .[dev]
-```
-
-## Run
-
-Extract Excel data only:
-
-```bash
-make extract COMPANY=schunk
-```
-
-Run the full pipeline:
-
-```bash
-make generate COMPANY=schunk
-```
-
-Run tests:
-
-```bash
-python -m pytest tests
-```
+Please refer to [docs/quickstart.md](docs/quickstart.md) for instructions on setting up your environment, preparing input data, and running the extraction pipeline.
 
 ## Documentation
 
-```text
-docs/README.md
-docs/architecture.md
-docs/quickstart.md
-docs/third-party.md
-docs/limitations.md
-```
-
-Start with `docs/architecture.md` for the data flow and
-`docs/limitations.md` before treating generated output as reviewed product
-data.
+* [docs/quickstart.md](docs/quickstart.md) - Instructions for setting up the environment and running the pipeline.
+* [docs/architecture.md](docs/architecture.md) - Overview of the data flow and system design.
+* [docs/limitations.md](docs/limitations.md) - Important limitations to review before treating generated output as reviewed product data.
+* [docs/third-party.md](docs/third-party.md) - Information regarding third-party dependencies and schemas.
+* [docs/README.md](docs/README.md) - Documentation index.
